@@ -1,0 +1,310 @@
+/* === pptx-manager Styles === */
+/* CI-Farbe: #6667AB (IDDP) */
+
+:root {
+    --ci-primary: #6667AB;
+    --ci-primary-light: #8889C0;
+    --ci-primary-dark: #4E4F8A;
+    --ci-primary-bg: #F0F0F8;
+    --ci-primary-10: rgba(102, 103, 171, 0.1);
+    --ci-primary-20: rgba(102, 103, 171, 0.2);
+    --bg: #F5F5F7;
+    --white: #FFFFFF;
+    --text: #2D2D3F;
+    --text-light: #6B6B80;
+    --border: #E0E0E8;
+    --success: #4CAF50;
+    --danger: #E53935;
+    --warning: #FF9800;
+    --radius: 12px;
+    --shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html {
+    font-size: 16px;
+    scroll-behavior: smooth;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+/* === Layout === */
+.container,
+.container-wide {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 1.5rem;
+    width: 100%;
+    flex: 1;
+}
+
+/* === Header === */
+.header {
+    background: var(--white);
+    border-bottom: 3px solid var(--ci-primary);
+    padding: 1rem 1.5rem;
+    text-align: center;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    box-shadow: var(--shadow);
+}
+
+.header-logo {
+    height: 40px;
+    margin-bottom: 0.25rem;
+}
+
+.header h1 {
+    color: var(--ci-primary);
+    font-size: 1.4rem;
+    font-weight: 700;
+}
+
+.header .subtitle {
+    color: var(--text-light);
+    font-size: 0.9rem;
+    margin-top: 0.15rem;
+}
+
+/* === Cards === */
+.card {
+    background: var(--white);
+    border-radius: var(--radius);
+    padding: 1.75rem;
+    margin-bottom: 1.25rem;
+    box-shadow: var(--shadow);
+}
+
+.card h2 {
+    color: var(--ci-primary-dark);
+    font-size: 1.25rem;
+    margin-bottom: 1rem;
+    padding-bottom: 0.6rem;
+    border-bottom: 2px solid var(--ci-primary-bg);
+}
+
+.card p {
+    margin-bottom: 0.75rem;
+    color: var(--text);
+}
+
+.card p em {
+    color: var(--text-light);
+    font-style: italic;
+}
+
+/* === Buttons === */
+.btn {
+    display: inline-block;
+    background: var(--ci-primary);
+    color: var(--white);
+    padding: 0.7rem 1.5rem;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: none;
+    transition: background 0.15s;
+}
+
+.btn:hover {
+    background: var(--ci-primary-dark);
+}
+
+.btn-secondary {
+    background: var(--white);
+    color: var(--ci-primary);
+    border: 2px solid var(--ci-primary);
+}
+
+.btn-secondary:hover {
+    background: var(--ci-primary-bg);
+}
+
+.btn-danger {
+    background: var(--danger);
+}
+
+.btn-danger:hover {
+    background: #B71C1C;
+}
+
+/* === Forms === */
+.form-group {
+    margin-bottom: 1rem;
+}
+
+.form-group label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 0.4rem;
+    color: var(--text);
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+    width: 100%;
+    padding: 0.6rem 0.8rem;
+    border: 2px solid var(--border);
+    border-radius: 8px;
+    font-size: 1rem;
+    font-family: inherit;
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+    outline: none;
+    border-color: var(--ci-primary);
+}
+
+/* === Stats === */
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 1rem;
+    margin-top: 1.25rem;
+}
+
+.stat-box {
+    background: var(--ci-primary-bg);
+    padding: 1.25rem;
+    border-radius: var(--radius);
+    text-align: center;
+    border-left: 4px solid var(--ci-primary);
+}
+
+.stat-number {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--ci-primary);
+}
+
+.stat-label {
+    color: var(--text-light);
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-top: 0.25rem;
+}
+
+/* === Tables === */
+.table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 1rem;
+}
+
+.table th,
+.table td {
+    padding: 0.7rem 0.9rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+}
+
+.table th {
+    background: var(--ci-primary-bg);
+    color: var(--ci-primary-dark);
+    font-weight: 600;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.table tbody tr:hover {
+    background: var(--ci-primary-10);
+}
+
+/* === Badges === */
+.badge {
+    display: inline-block;
+    padding: 0.2rem 0.55rem;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    background: var(--ci-primary-bg);
+    color: var(--ci-primary-dark);
+}
+
+.badge-success {
+    background: #E8F5E9;
+    color: #2E7D32;
+}
+
+.badge-danger {
+    background: #FFEBEE;
+    color: var(--danger);
+}
+
+.badge-warning {
+    background: #FFF3E0;
+    color: #E65100;
+}
+
+/* === Search Highlight === */
+mark {
+    background: #FFF59D;
+    color: inherit;
+    padding: 0 2px;
+    border-radius: 2px;
+}
+
+/* === Progress Bar === */
+.progress-bar {
+    width: 100%;
+    height: 20px;
+    background: var(--ci-primary-bg);
+    border-radius: 10px;
+    overflow: hidden;
+    margin: 0.5rem 0;
+}
+
+.progress-bar-fill {
+    height: 100%;
+    background: var(--ci-primary);
+    transition: width 0.3s ease;
+    width: 0%;
+}
+
+/* === Footer === */
+.footer {
+    background: var(--white);
+    border-top: 1px solid var(--border);
+    padding: 1rem;
+    text-align: center;
+    color: var(--text-light);
+    font-size: 0.85rem;
+    margin-top: 2rem;
+}
+
+/* === Responsive === */
+@media (max-width: 640px) {
+    .container,
+    .container-wide {
+        padding: 1rem;
+    }
+
+    .card {
+        padding: 1.25rem;
+    }
+
+    .header h1 {
+        font-size: 1.2rem;
+    }
+}

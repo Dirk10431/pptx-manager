@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>pptx-manager - IDDP</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <header class="header">
+        <img src="/logo.jpg" alt="IDDP" class="header-logo" onerror="this.style.display='none'">
+        <h1>pptx-manager</h1>
+        <p class="subtitle">Verwaltung & Duplikatsuche fuer PPTX-Sammlungen</p>
+    </header>
+
+    <main class="container-wide">
+
+        <!-- Statistik -->
+        <section class="card">
+            <h2>Status</h2>
+            <div class="stats-grid">
+                <div class="stat-box">
+                    <div class="stat-number" id="stat-presentations">-</div>
+                    <div class="stat-label">Praesentationen</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-number" id="stat-slides">-</div>
+                    <div class="stat-label">Folien</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Scan -->
+        <section class="card">
+            <h2>Ordner scannen</h2>
+            <p>Gib den Pfad zu einem Ordner mit PPTX-Dateien ein. Unterordner werden automatisch mitgescannt.</p>
+
+            <div class="form-group">
+                <label for="folder-path">Ordner-Pfad</label>
+                <input type="text" id="folder-path" placeholder="z.B. C:/Users/dirkp/OneDrive - Amperian/Seminare" autocomplete="off">
+            </div>
+
+            <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; margin-top: 1rem;">
+                <button class="btn btn-secondary" id="btn-check">Pfad pruefen</button>
+                <button class="btn" id="btn-scan" disabled>Scan starten</button>
+            </div>
+
+            <div id="check-result" style="margin-top: 1rem;"></div>
+        </section>
+
+        <!-- Volltextsuche -->
+        <section class="card">
+            <h2>Volltextsuche</h2>
+            <p>Durchsuche alle indizierten Folien nach Begriffen.</p>
+
+            <div class="form-group">
+                <input type="search" id="search-input" placeholder="z.B. DGUV, Unterweisung, Elektrofachkraft ..." autocomplete="off">
+            </div>
+
+            <div id="search-results"></div>
+        </section>
+
+        <!-- Scan-Fortschritt -->
+        <section class="card" id="progress-card" style="display: none;">
+            <h2>Scan laeuft...</h2>
+            <div id="progress-info">
+                <p><strong>Aktuelle Datei:</strong> <span id="progress-current">-</span></p>
+                <div class="progress-bar">
+                    <div class="progress-bar-fill" id="progress-fill"></div>
+                </div>
+                <p><span id="progress-text">0 / 0</span></p>
+                <div class="stats-grid" style="margin-top: 1rem;">
+                    <div class="stat-box" style="padding: 0.75rem;">
+                        <div class="stat-number" id="progress-added" style="font-size: 1.4rem;">0</div>
+                        <div class="stat-label">Neu</div>
+                    </div>
+                    <div class="stat-box" style="padding: 0.75rem;">
+                        <div class="stat-number" id="progress-updated" style="font-size: 1.4rem;">0</div>
+                        <div class="stat-label">Aktualisiert</div>
+                    </div>
+                    <div class="stat-box" style="padding: 0.75rem;">
+                        <div class="stat-number" id="progress-skipped" style="font-size: 1.4rem;">0</div>
+                        <div class="stat-label">Unveraendert</div>
+                    </div>
+                    <div class="stat-box" style="padding: 0.75rem;">
+                        <div class="stat-number" id="progress-failed" style="font-size: 1.4rem;">0</div>
+                        <div class="stat-label">Fehler</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <footer class="footer">
+        <p>pptx-manager v0.1.0 | Laeuft lokal auf 127.0.0.1:3002</p>
+    </footer>
+
+    <script src="/js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Datenbank (lokale Daten)
+data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Logs
+*.log
+npm-debug.log*
+
+# System
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# Alte Python-Version
+_old/
+
+# Backups
+backups/
