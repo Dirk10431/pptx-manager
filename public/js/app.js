@@ -9,8 +9,34 @@ async function loadStats() {
         const data = await response.json();
         document.getElementById('stat-presentations').textContent = data.presentations;
         document.getElementById('stat-slides').textContent = data.slides;
+
+        // Versionshinweis ggf. anzeigen
+        const warning = document.getElementById('version-warning');
+        if (warning) {
+            warning.style.display = data.compatible ? 'none' : 'block';
+        }
     } catch (err) {
         console.error('Fehler beim Laden der Stats:', err);
+    }
+}
+
+// --- Index komplett zuruecksetzen ---
+async function resetIndex() {
+    if (!confirm('Alle gescannten Folien-Daten wirklich loeschen? Die PPTX-Dateien bleiben unberuehrt. Danach muss neu gescannt werden.')) {
+        return;
+    }
+    try {
+        const response = await fetch('/api/reset', { method: 'POST' });
+        if (!response.ok) {
+            const err = await response.json();
+            alert('Fehler: ' + (err.error || 'Unbekannter Fehler'));
+            return;
+        }
+        loadStats();
+        document.getElementById('search-results').innerHTML = '';
+        document.getElementById('search-summary').textContent = '';
+    } catch (err) {
+        alert('Netzwerkfehler: ' + err.message);
     }
 }
 
@@ -22,6 +48,33 @@ function saveLastPath(path) {
 }
 function loadLastPath() {
     try { return localStorage.getItem(PATH_KEY) || ''; } catch (e) { return ''; }
+}
+
+// --- Ordner ueber nativen Windows-Dialog waehlen ---
+async function pickFolder() {
+    const btn = document.getElementById('btn-pick-folder');
+    const input = document.getElementById('folder-path');
+    const originalText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Dialog geoeffnet...';
+    try {
+        const response = await fetch('/api/pick-folder');
+        const data = await response.json();
+        if (data.error) {
+            alert('Fehler: ' + data.error);
+            return;
+        }
+        if (data.path) {
+            input.value = data.path;
+            saveLastPath(data.path);
+            checkPath();
+        }
+    } catch (err) {
+        alert('Netzwerkfehler: ' + err.message);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = originalText;
+    }
 }
 
 // --- Pfad pruefen ---
@@ -145,15 +198,22 @@ function escapeHtml(str) {
 
 async function runSearch(term) {
     const resultsEl = document.getElementById('search-results');
+    const summaryEl = document.getElementById('search-summary');
+
     if (!term || term.length < 2) {
         resultsEl.innerHTML = '';
+        summaryEl.textContent = '';
         return;
     }
 
     resultsEl.innerHTML = '<p style="color: var(--text-light);">Suche...</p>';
+    summaryEl.textContent = '';
+
+    const uniqueOnly = document.getElementById('filter-unique-only').checked;
+    const url = '/api/search?q=' + encodeURIComponent(term) + (uniqueOnly ? '&uniqueOnly=1' : '');
 
     try {
-        const response = await fetch('/api/search?q=' + encodeURIComponent(term));
+        const response = await fetch(url);
         const data = await response.json();
 
         if (data.error) {
@@ -161,37 +221,109 @@ async function runSearch(term) {
             return;
         }
 
-        if (!data.results || data.results.length === 0) {
+        if (!data.groups || data.groups.length === 0) {
             resultsEl.innerHTML = '<p style="color: var(--text-light);">Keine Treffer.</p>';
+            summaryEl.textContent = uniqueOnly
+                ? `Gesamt ${data.totalGroups} Gruppen, davon 0 eindeutige.`
+                : '';
             return;
         }
 
-        const rows = data.results.map(r => `
-            <tr>
-                <td><span class="badge">Folie ${r.slide_index}</span></td>
-                <td><strong>${escapeHtml(r.title || '(ohne Titel)')}</strong></td>
-                <td style="font-size: 0.9rem; color: var(--text-light);">${r.snippet || ''}</td>
-                <td style="font-size: 0.85rem;" title="${escapeHtml(r.file_path)}">${escapeHtml(r.file_name)}</td>
-            </tr>
-        `).join('');
+        // Summary-Zeile
+        const uniqueCount = data.groups.filter(g => g.count === 1).length;
+        summaryEl.textContent = uniqueOnly
+            ? `${data.shownGroups} eindeutige Folien (von ${data.totalGroups} Gruppen, ${data.totalOccurrences} Treffer gesamt).`
+            : `${data.totalGroups} Gruppen (${uniqueCount} davon eindeutig), ${data.totalOccurrences} Treffer gesamt.`;
 
-        resultsEl.innerHTML = `
-            <p style="margin: 1rem 0 0.5rem;"><span class="badge badge-success">${data.results.length} Treffer</span></p>
-            <table class="table">
-                <thead>
-                    <tr>
-                        <th>Folie</th>
-                        <th>Titel</th>
-                        <th>Textauszug</th>
-                        <th>Datei</th>
-                    </tr>
-                </thead>
-                <tbody>${rows}</tbody>
-            </table>
-        `;
+        // Gruppen rendern
+        const groupsHtml = data.groups.map((g, idx) => renderGroup(g, idx)).join('');
+        resultsEl.innerHTML = `<div class="search-groups">${groupsHtml}</div>`;
+
+        // Klick-Handler fuer "Alle X Vorkommen zeigen" anhaengen
+        resultsEl.querySelectorAll('.group-toggle').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const idx = e.currentTarget.dataset.groupIdx;
+                const details = resultsEl.querySelector('.group-details[data-group-idx="' + idx + '"]');
+                if (details) {
+                    const open = details.style.display !== 'none';
+                    details.style.display = open ? 'none' : 'block';
+                    e.currentTarget.textContent = open ? 'Vorkommen zeigen' : 'Vorkommen ausblenden';
+                }
+            });
+        });
     } catch (err) {
         resultsEl.innerHTML = `<p style="color: var(--danger);">Netzwerkfehler: ${escapeHtml(err.message)}</p>`;
     }
+}
+
+// --- Thumbnail-HTML fuer eine Folie (lazy, loading=lazy laesst Browser bestimmen wann) ---
+// Wir geben ein festes Seitenverhaeltnis 16:9 vor, damit beim Laden nichts springt.
+// onerror blendet Bild aus, wenn PowerPoint fehlt oder Export fehlgeschlagen ist.
+function thumbnailHtml(slideId, opts = {}) {
+    const width = opts.width || 200;
+    const height = Math.round(width * 9 / 16);
+    return `
+        <div class="thumb-wrap" style="width: ${width}px; height: ${height}px; flex-shrink: 0; background: #f5f5f5; border: 1px solid var(--border); border-radius: 4px; overflow: hidden; display: flex; align-items: center; justify-content: center;">
+            <img
+                src="/api/thumb/${slideId}"
+                alt="Folien-Vorschau"
+                loading="lazy"
+                style="width: 100%; height: 100%; object-fit: contain;"
+                onerror="this.style.display='none'; this.parentElement.innerHTML='<span style=\\'color:var(--text-light);font-size:0.75rem;text-align:center;padding:0.25rem;\\'>Vorschau nicht verfuegbar</span>';"
+            >
+        </div>
+    `;
+}
+
+// --- Eine Gruppe (identische Folien per text_hash) als HTML rendern ---
+function renderGroup(g, idx) {
+    const rep = g.representative;
+    const isUnique = g.count === 1;
+    const badgeClass = isUnique ? 'badge-success' : 'badge';
+    const badgeText = isUnique
+        ? 'Einzigartig'
+        : `${g.count}&times; in ${g.fileCount} ${g.fileCount === 1 ? 'Datei' : 'Dateien'}`;
+
+    const occurrencesHtml = g.occurrences.map(o => `
+        <tr>
+            <td style="width: 130px;">${thumbnailHtml(o.slideId, { width: 120 })}</td>
+            <td style="vertical-align: top;"><span class="badge">Folie ${o.slideIndex}</span></td>
+            <td style="font-size: 0.85rem; vertical-align: top;" title="${escapeHtml(o.filePath)}">${escapeHtml(o.fileName)}</td>
+        </tr>
+    `).join('');
+
+    return `
+    <div class="group-card" style="border: 1px solid var(--border); border-radius: 6px; padding: 0.85rem 1rem; margin-bottom: 0.75rem;">
+        <div style="display: flex; gap: 1rem; align-items: flex-start; flex-wrap: wrap;">
+            ${thumbnailHtml(rep.slideId, { width: 200 })}
+            <div style="flex: 1; min-width: 260px;">
+                <div style="margin-bottom: 0.25rem;">
+                    <span class="badge ${badgeClass}">${badgeText}</span>
+                    <span class="badge">Folie ${rep.slideIndex}</span>
+                </div>
+                <strong>${escapeHtml(rep.title || '(ohne Titel)')}</strong>
+                <div style="font-size: 0.9rem; color: var(--text-light); margin-top: 0.25rem;">${rep.snippet || ''}</div>
+                <div style="font-size: 0.8rem; color: var(--text-light); margin-top: 0.35rem;" title="${escapeHtml(rep.filePath)}">
+                    Beispiel aus: ${escapeHtml(rep.fileName)}
+                </div>
+            </div>
+            ${!isUnique ? `
+                <button class="btn btn-secondary group-toggle" data-group-idx="${idx}" style="flex-shrink: 0;">
+                    Vorkommen zeigen
+                </button>
+            ` : ''}
+        </div>
+        ${!isUnique ? `
+            <div class="group-details" data-group-idx="${idx}" style="display: none; margin-top: 0.75rem;">
+                <table class="table" style="margin-top: 0.5rem;">
+                    <thead>
+                        <tr><th style="width: 130px;">Vorschau</th><th style="width: 7rem;">Folie</th><th>Datei</th></tr>
+                    </thead>
+                    <tbody>${occurrencesHtml}</tbody>
+                </table>
+            </div>
+        ` : ''}
+    </div>`;
 }
 
 // --- Init ---
@@ -201,6 +333,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const input = document.getElementById('folder-path');
     input.value = loadLastPath();
 
+    document.getElementById('btn-pick-folder').addEventListener('click', pickFolder);
     document.getElementById('btn-check').addEventListener('click', checkPath);
     document.getElementById('btn-scan').addEventListener('click', startScan);
 
@@ -218,4 +351,13 @@ document.addEventListener('DOMContentLoaded', () => {
         clearTimeout(searchTimer);
         searchTimer = setTimeout(() => runSearch(searchInput.value.trim()), 250);
     });
+
+    // Filter-Checkbox: Bei Umschalten neu suchen
+    document.getElementById('filter-unique-only').addEventListener('change', () => {
+        runSearch(searchInput.value.trim());
+    });
+
+    // Reset-Button
+    const resetBtn = document.getElementById('btn-reset');
+    if (resetBtn) resetBtn.addEventListener('click', resetIndex);
 });

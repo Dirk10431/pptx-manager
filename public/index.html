@@ -28,16 +28,23 @@
                     <div class="stat-label">Folien</div>
                 </div>
             </div>
+            <div id="version-warning" style="display:none; margin-top: 1rem; padding: 0.75rem; border-radius: 4px; background: #fff3cd; color: #856404; border: 1px solid #ffeaa7;">
+                <strong>Achtung:</strong> Der Scan-Index wurde mit einer aelteren Version der Fingerprint-Logik erstellt. Duplikat-Erkennung ist bis zu einem Neu-Scan unzuverlaessig.
+                <button class="btn btn-secondary" id="btn-reset" style="margin-left: 0.5rem;">Index zuruecksetzen</button>
+            </div>
         </section>
 
         <!-- Scan -->
         <section class="card">
             <h2>Ordner scannen</h2>
-            <p>Gib den Pfad zu einem Ordner mit PPTX-Dateien ein. Unterordner werden automatisch mitgescannt.</p>
+            <p>Waehle einen Ordner mit PPTX-Dateien aus oder gib den Pfad ein. Unterordner werden automatisch mitgescannt.</p>
 
             <div class="form-group">
                 <label for="folder-path">Ordner-Pfad</label>
-                <input type="text" id="folder-path" placeholder="z.B. C:/Users/dirkp/OneDrive - Amperian/Seminare" autocomplete="off">
+                <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                    <input type="text" id="folder-path" placeholder="z.B. C:/Users/dirkp/OneDrive - Amperian/Seminare" autocomplete="off" style="flex: 1; min-width: 260px;">
+                    <button class="btn btn-secondary" id="btn-pick-folder" type="button">Ordner waehlen...</button>
+                </div>
             </div>
 
             <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; margin-top: 1rem;">
@@ -51,10 +58,18 @@
         <!-- Volltextsuche -->
         <section class="card">
             <h2>Volltextsuche</h2>
-            <p>Durchsuche alle indizierten Folien nach Begriffen.</p>
+            <p>Durchsuche alle indizierten Folien nach Begriffen. Gleiche Folien werden automatisch zu einer Gruppe zusammengefasst.</p>
 
             <div class="form-group">
-                <input type="search" id="search-input" placeholder="z.B. DGUV, Unterweisung, Elektrofachkraft ..." autocomplete="off">
+                <input type="search" id="search-input" placeholder="z.B. Arbeiten unter Spannung, DGUV, Elektrofachkraft ..." autocomplete="off">
+            </div>
+
+            <div style="display: flex; gap: 1rem; align-items: center; margin-top: 0.5rem; flex-wrap: wrap;">
+                <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer;">
+                    <input type="checkbox" id="filter-unique-only">
+                    <span>Nur eindeutige Folien zeigen (1&times;)</span>
+                </label>
+                <span id="search-summary" style="color: var(--text-light); font-size: 0.9rem;"></span>
             </div>
 
             <div id="search-results"></div>

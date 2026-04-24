@@ -5,7 +5,10 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js"
+    "dev": "node server.js",
+    "thumbs": "node bin/generate-thumbs.js",
+    "thumbs:dry": "node bin/generate-thumbs.js --dry-run",
+    "thumbs:help": "node bin/generate-thumbs.js --help"
   },
   "author": "Dr.-Ing. Dirk Peters",
   "license": "UNLICENSED",
