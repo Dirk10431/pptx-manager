@@ -82,15 +82,16 @@ app.post('/api/open', (req, res) => {
                 windowsHide: true,
             });
         } else if (mode === 'folder') {
-            // explorer.exe /select,"<pfad>" hat sich auf diesem System nicht
-            // verlaesslich aufrufen lassen (Quoting / Single-Instance-Verhalten).
-            // Pragmatisch: Wir oeffnen einfach den uebergeordneten Ordner.
-            // Direkt-Spawn ohne Shell, ohne PowerShell — explorer.exe akzeptiert
-            // einen einzelnen Pfad als Argument zuverlaessig.
+            // Uebergeordneten Ordner via 'cmd /c start "" <ordner>' oeffnen —
+            // gleiche Technik wie bei mode='file'. Vorteil: das Explorer-
+            // Fenster kommt nach vorn (Fokus), nicht nur ins Taskleisten-
+            // Blinken. Direkter spawn('explorer.exe', ...) liess das Fenster
+            // unsichtbar im Hintergrund erscheinen.
             const folder = path.dirname(filePath);
-            child = spawn('explorer.exe', [folder], {
+            child = spawn('cmd', ['/c', 'start', '""', folder], {
                 detached: true,
                 stdio: 'ignore',
+                windowsHide: true,
             });
         } else {
             return res.status(400).json({ error: 'Ungueltiger mode (file|folder).' });
