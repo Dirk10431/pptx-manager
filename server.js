@@ -82,18 +82,27 @@ app.post('/api/open', (req, res) => {
                 windowsHide: true,
             });
         } else if (mode === 'folder') {
-            // explorer.exe /select,"<path>" muss ganz spezifisch aufgerufen werden:
-            // /select erwartet die Pfad-Angabe in derselben "Token"-Einheit, mit
-            // CMD-Quoting. Node's Array-Spawn quotet zu aggressiv (umschliesst den
-            // ganzen "/select,..."-String) -> Explorer reagiert dann nicht.
-            // Loesung: shell:true und Command als String mit eigener Quotierung.
-            const escaped = filePath.replace(/"/g, '""');
-            child = spawn(`explorer.exe /select,"${escaped}"`, {
-                shell: true,
+            // explorer.exe /select,"<pfad>" ist beim Quoting heikel — sowohl
+            // direkter Spawn als auch shell:true scheitert je nach Pfad.
+            // Verlaesslich: PowerShell Start-Process -ArgumentList nutzt die
+            // korrekte Win32-API zur Argument-Uebergabe.
+            const psPath = filePath.replace(/'/g, "''");
+            const psScript = `
+$ErrorActionPreference = 'Stop'
+$path = '${psPath}'
+Start-Process -FilePath 'explorer.exe' -ArgumentList "/select,\`"$path\`""
+`;
+            const scriptFile = writeTempPs1(psScript);
+            child = spawn('powershell.exe', [
+                '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
+                '-File', scriptFile,
+            ], {
                 detached: true,
                 stdio: 'ignore',
                 windowsHide: true,
             });
+            // Skript-Datei nach ein paar Sekunden aufraeumen (PS hat sie dann gelesen)
+            setTimeout(() => safeUnlink(scriptFile), 5000);
         } else {
             return res.status(400).json({ error: 'Ungueltiger mode (file|folder).' });
         }
