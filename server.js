@@ -82,24 +82,29 @@ app.post('/api/open', (req, res) => {
                 windowsHide: true,
             });
         } else if (mode === 'folder') {
-            // Uebergeordneten Ordner oeffnen. cmd /c start hatte Probleme bei
-            // Pfaden mit Klammern + Kommas (z.B. ".../TÜV - VEFK (2017)/...").
-            // PowerShell Start-Process nutzt direkt die Win32-Shell-API und
-            // umgeht das ganze cmd-Quoting-Theater — bringt das Fenster
-            // ausserdem zuverlaessig in den Vordergrund.
+            // Uebergeordneten Ordner oeffnen.
+            // Zwei Methoden:
+            //   A) cmd /c start "" <folder> — bringt Fenster in den Vordergrund,
+            //      scheitert aber bei Pfaden mit Klammern UND Kommas (cmd-Quoting)
+            //   B) spawn('explorer.exe', [folder]) — immer zuverlaessig, aber
+            //      Fenster oeffnet im Hintergrund (Taskleiste blinkt)
+            // Wir nehmen A, ausser der Pfad ist "auffaellig" (Klammern + Komma).
             const folder = path.dirname(filePath);
-            const psFolder = folder.replace(/'/g, "''");
-            const psScript = `Start-Process -FilePath '${psFolder}'`;
-            const scriptFile = writeTempPs1(psScript);
-            child = spawn('powershell.exe', [
-                '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
-                '-File', scriptFile,
-            ], {
-                detached: true,
-                stdio: 'ignore',
-                windowsHide: true,
-            });
-            setTimeout(() => safeUnlink(scriptFile), 5000);
+            const tricky = /[()]/.test(folder) && /,/.test(folder);
+            if (tricky) {
+                // Fallback: Direkt-Spawn (Hintergrund, dafuer zuverlaessig)
+                child = spawn('explorer.exe', [folder], {
+                    detached: true,
+                    stdio: 'ignore',
+                });
+            } else {
+                // Standard: cmd /c start mit Vordergrund-Fokus
+                child = spawn('cmd', ['/c', 'start', '""', folder], {
+                    detached: true,
+                    stdio: 'ignore',
+                    windowsHide: true,
+                });
+            }
         } else {
             return res.status(400).json({ error: 'Ungueltiger mode (file|folder).' });
         }
