@@ -12,7 +12,7 @@ const { spawn } = require('child_process');
 const { initDb, checkFingerprintCompatibility, setFingerprintVersion, clearScanData } = require('./lib/db');
 const { runScan, scanState, findPptxFiles } = require('./lib/scanner');
 const { FINGERPRINT_VERSION } = require('./lib/fingerprint');
-const { generateThumbnail, thumbnailCachePath } = require('./lib/thumbnailer');
+const { generateThumbnail, thumbnailCachePath, writeTempPs1, safeUnlink } = require('./lib/thumbnailer');
 const { loadConfig } = require('./lib/config');
 
 const config = loadConfig();
@@ -82,10 +82,17 @@ app.post('/api/open', (req, res) => {
                 windowsHide: true,
             });
         } else if (mode === 'folder') {
-            // Explorer mit Datei vorausgewaehlt — beste UX (man sieht Datei + Kontext)
-            child = spawn('explorer.exe', ['/select,' + filePath], {
+            // explorer.exe /select,"<path>" muss ganz spezifisch aufgerufen werden:
+            // /select erwartet die Pfad-Angabe in derselben "Token"-Einheit, mit
+            // CMD-Quoting. Node's Array-Spawn quotet zu aggressiv (umschliesst den
+            // ganzen "/select,..."-String) -> Explorer reagiert dann nicht.
+            // Loesung: shell:true und Command als String mit eigener Quotierung.
+            const escaped = filePath.replace(/"/g, '""');
+            child = spawn(`explorer.exe /select,"${escaped}"`, {
+                shell: true,
                 detached: true,
                 stdio: 'ignore',
+                windowsHide: true,
             });
         } else {
             return res.status(400).json({ error: 'Ungueltiger mode (file|folder).' });
@@ -337,9 +344,13 @@ app.get('/api/pick-folder', (req, res) => {
         return res.status(501).json({ error: 'Ordner-Dialog aktuell nur unter Windows verfuegbar.' });
     }
 
+    // Norton-vertraeglich: Skript in .ps1-Datei schreiben und per -File aufrufen,
+    // statt -EncodedCommand (das die IDP.HELU.PSE71-Heuristik triggert).
     const psScript = `
+$ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 Add-Type -AssemblyName System.Windows.Forms
+# Unsichtbare TopMost-Form, damit der Dialog vor dem Browser erscheint
 $form = New-Object System.Windows.Forms.Form
 $form.TopMost = $true
 $form.ShowInTaskbar = $false
@@ -354,17 +365,22 @@ $result = $d.ShowDialog($form)
 if ($result -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output $d.SelectedPath }
 $form.Dispose()
 `;
-    const encoded = Buffer.from(psScript, 'utf16le').toString('base64');
-    const ps = spawn('powershell.exe', ['-NoProfile', '-STA', '-EncodedCommand', encoded]);
+    const scriptFile = writeTempPs1(psScript);
+    const ps = spawn('powershell.exe', [
+        '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
+        '-STA', '-File', scriptFile,
+    ]);
 
     let stdout = '';
     let stderr = '';
     ps.stdout.on('data', (d) => { stdout += d.toString('utf8'); });
     ps.stderr.on('data', (d) => { stderr += d.toString('utf8'); });
     ps.on('error', (err) => {
+        safeUnlink(scriptFile);
         res.status(500).json({ error: 'PowerShell-Dialog fehlgeschlagen: ' + err.message });
     });
     ps.on('close', () => {
+        safeUnlink(scriptFile);
         const selected = stdout.trim();
         if (selected) {
             res.json({ path: selected });
