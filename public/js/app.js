@@ -135,7 +135,7 @@ async function checkPath() {
     const scanBtn = document.getElementById('btn-scan');
 
     if (!folderPath) {
-        resultEl.innerHTML = '<p style="color: var(--danger);">Bitte einen Pfad eingeben.</p>';
+        resultEl.innerHTML = '<p style="color: var(--warn);">Bitte einen Pfad eingeben.</p>';
         scanBtn.disabled = true;
         return;
     }
@@ -152,26 +152,26 @@ async function checkPath() {
         const data = await response.json();
 
         if (!data.valid) {
-            resultEl.innerHTML = `<p style="color: var(--danger);">Fehler: ${data.error}</p>`;
+            resultEl.innerHTML = `<p style="color: var(--warn);">Fehler: ${data.error}</p>`;
             scanBtn.disabled = true;
             return;
         }
 
         if (data.fileCount === 0) {
-            resultEl.innerHTML = `<p style="color: var(--warning);">Keine PPTX-Dateien in diesem Ordner gefunden.</p>`;
+            resultEl.innerHTML = `<p style="color: var(--accent2);">Keine PPTX-Dateien in diesem Ordner gefunden.</p>`;
             scanBtn.disabled = true;
             return;
         }
 
         let html = `<p><span class="badge badge-success">${data.fileCount} PPTX-Dateien</span> gefunden.</p>`;
         if (data.sample && data.sample.length > 0) {
-            html += `<p style="color: var(--text-light); font-size: 0.9rem;">Beispiele: ${data.sample.join(', ')}${data.fileCount > data.sample.length ? ', ...' : ''}</p>`;
+            html += `<p style="color: var(--muted); font-size: 0.9rem;">Beispiele: ${data.sample.join(', ')}${data.fileCount > data.sample.length ? ', ...' : ''}</p>`;
         }
         resultEl.innerHTML = html;
         scanBtn.disabled = false;
         saveLastPath(folderPath);
     } catch (err) {
-        resultEl.innerHTML = `<p style="color: var(--danger);">Netzwerkfehler: ${err.message}</p>`;
+        resultEl.innerHTML = `<p style="color: var(--warn);">Netzwerkfehler: ${err.message}</p>`;
         scanBtn.disabled = true;
     }
 }
@@ -283,7 +283,7 @@ async function loadAndRenderRoots() {
             <label class="root-checkbox checked" data-root="${escapeHtml(r.fullPath)}" title="${escapeHtml(r.fullPath)} (${r.count} Dateien)">
                 <input type="checkbox" checked>
                 <span>${escapeHtml(r.label)}</span>
-                <span style="color: var(--text-light); font-size: 0.75rem;">(${r.count})</span>
+                <span style="color: var(--muted); font-size: 0.75rem;">(${r.count})</span>
             </label>
         `).join('');
 
@@ -347,7 +347,7 @@ async function runSearch(term, append = false) {
             searchState = { term: '', offset: 0, limit: pageSize, accumulated: [] };
             return;
         }
-        resultsEl.innerHTML = '<p style="color: var(--text-light);">Suche...</p>';
+        resultsEl.innerHTML = '<p style="color: var(--muted);">Suche...</p>';
         summaryEl.textContent = '';
         searchState = { term, offset: 0, limit: pageSize, accumulated: [] };
     }
@@ -362,7 +362,7 @@ async function runSearch(term, append = false) {
             // Nichts aktiv -> sofort leeres Ergebnis, kein Server-Roundtrip noetig
             const resultsEl2 = document.getElementById('search-results');
             const summaryEl2 = document.getElementById('search-summary');
-            resultsEl2.innerHTML = '<p style="color: var(--text-light);">Kein Hauptpfad ausgewaehlt — Filter zu eng.</p>';
+            resultsEl2.innerHTML = '<p style="color: var(--muted);">Kein Hauptpfad ausgewaehlt — Filter zu eng.</p>';
             summaryEl2.textContent = '';
             return;
         }
@@ -384,12 +384,12 @@ async function runSearch(term, append = false) {
         const data = await response.json();
 
         if (data.error) {
-            resultsEl.innerHTML = `<p style="color: var(--danger);">${escapeHtml(data.error)}</p>`;
+            resultsEl.innerHTML = `<p style="color: var(--warn);">${escapeHtml(data.error)}</p>`;
             return;
         }
 
         if (!append && (!data.groups || data.groups.length === 0)) {
-            resultsEl.innerHTML = '<p style="color: var(--text-light);">Keine Treffer.</p>';
+            resultsEl.innerHTML = '<p style="color: var(--muted);">Keine Treffer.</p>';
             summaryEl.textContent = uniqueOnly
                 ? `Gesamt ${data.totalGroupsBeforeFilter} Gruppen, davon 0 eindeutige.`
                 : '';
@@ -406,7 +406,7 @@ async function runSearch(term, append = false) {
         // Gruppen rendern (kompletter Re-Render bei accumulated)
         const groupsHtml = searchState.accumulated.map((g, idx) => renderGroup(g, idx)).join('');
         const moreBtnHtml = data.hasMore
-            ? `<div style="text-align:center; margin: 1rem 0;"><button class="btn btn-secondary" id="btn-load-more">Naechste ${searchState.limit} laden (${data.totalGroups - searchState.accumulated.length} verbleibend)</button></div>`
+            ? `<div style="text-align:center; margin: 1rem 0;"><button class="act-btn" id="btn-load-more">Naechste ${searchState.limit} laden (${data.totalGroups - searchState.accumulated.length} verbleibend)</button></div>`
             : '';
         resultsEl.innerHTML = `<div class="search-groups">${groupsHtml}</div>${moreBtnHtml}`;
 
@@ -453,7 +453,7 @@ async function runSearch(term, append = false) {
             });
         });
     } catch (err) {
-        resultsEl.innerHTML = `<p style="color: var(--danger);">Netzwerkfehler: ${escapeHtml(err.message)}</p>`;
+        resultsEl.innerHTML = `<p style="color: var(--warn);">Netzwerkfehler: ${escapeHtml(err.message)}</p>`;
     }
 }
 
@@ -502,7 +502,7 @@ function thumbnailHtml(slideId, opts = {}) {
                 alt="Folien-Vorschau"
                 loading="lazy"
                 style="width: 100%; height: 100%; object-fit: contain;"
-                onerror="this.style.display='none'; this.parentElement.style.cursor='default'; this.parentElement.innerHTML='<span style=\\'color:var(--text-light);font-size:0.75rem;text-align:center;padding:0.25rem;\\'>Vorschau nicht verfuegbar</span>';"
+                onerror="this.style.display='none'; this.parentElement.style.cursor='default'; this.parentElement.innerHTML='<span style=\\'color:var(--muted);font-size:0.75rem;text-align:center;padding:0.25rem;\\'>Vorschau nicht verfuegbar</span>';"
             >
         </div>
     `;
@@ -536,7 +536,7 @@ function renderGroup(g, idx) {
     `).join('');
 
     const occurrencesFooter = hiddenOccCount > 0
-        ? `<tr><td colspan="3" style="text-align:center; padding:0.75rem; color:var(--text-light); font-style: italic;">+ ${hiddenOccCount} weitere Vorkommen ausgeblendet (Performance-Schutz). Verfeinere die Suche, um sie zu sehen.</td></tr>`
+        ? `<tr><td colspan="3" style="text-align:center; padding:0.75rem; color:var(--muted); font-style: italic;">+ ${hiddenOccCount} weitere Vorkommen ausgeblendet (Performance-Schutz). Verfeinere die Suche, um sie zu sehen.</td></tr>`
         : '';
 
     return `
@@ -549,14 +549,14 @@ function renderGroup(g, idx) {
                     <span class="badge">Folie ${rep.slideIndex}</span>
                 </div>
                 <strong>${escapeHtml(rep.title || '(ohne Titel)')}</strong>
-                <div style="font-size: 0.9rem; color: var(--text-light); margin-top: 0.25rem;">${rep.snippet || ''}</div>
-                <div style="font-size: 0.8rem; color: var(--text-light); margin-top: 0.35rem;" title="${escapeHtml(rep.filePath)}">
+                <div style="font-size: 0.9rem; color: var(--muted); margin-top: 0.25rem;">${rep.snippet || ''}</div>
+                <div style="font-size: 0.8rem; color: var(--muted); margin-top: 0.35rem;" title="${escapeHtml(rep.filePath)}">
                     Beispiel aus: ${escapeHtml(rep.fileName)}
                     ${actionButtonsHtml(rep.filePath)}
                 </div>
             </div>
             ${!isUnique ? `
-                <button class="btn btn-secondary group-toggle" data-group-idx="${idx}" style="flex-shrink: 0;">
+                <button class="act-btn group-toggle" data-group-idx="${idx}" style="flex-shrink: 0;">
                     Vorkommen zeigen
                 </button>
             ` : ''}
