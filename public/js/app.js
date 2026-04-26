@@ -20,9 +20,41 @@ async function loadAppConfig() {
         // CSS-Variablen fuer Lightbox setzen
         document.documentElement.style.setProperty('--lightbox-height-vh', APP_CONFIG.lightbox.heightVh + 'vh');
         document.documentElement.style.setProperty('--lightbox-max-width-vw', APP_CONFIG.lightbox.maxWidthVw + 'vw');
+
+        // Jahres-Filter-Pills aus Config rendern (kommen vom Server, basierend
+        // auf aktuellem Jahr + config.search.yearFilterYearsBack)
+        renderYearButtons(cfg.search && cfg.search.yearFilterOptions);
     } catch (err) {
         console.warn('Config konnte nicht geladen werden, nutze Defaults:', err);
     }
+}
+
+function renderYearButtons(options) {
+    const container = document.getElementById('year-buttons');
+    if (!container) return;
+    // Fallback, falls /api/config nicht antwortet: aktuelles Jahr und 3 davor
+    if (!options || !Array.isArray(options) || options.length === 0) {
+        const current = new Date().getFullYear();
+        const cutoff = current - 3;
+        options = [{ value: 'all', label: 'Alle' }, { value: 'le' + cutoff, label: '≤ ' + cutoff }];
+        for (let y = cutoff + 1; y <= current; y++) {
+            options.push({ value: String(y), label: String(y) });
+        }
+    }
+    container.innerHTML = options.map((opt, i) => {
+        const active = (i === 0) ? ' active' : '';
+        return `<button class="btn-pill year-btn${active}" data-year="${escapeHtml(opt.value)}">${escapeHtml(opt.label)}</button>`;
+    }).join('');
+
+    // Click-Handler an die frisch erzeugten Buttons binden
+    container.querySelectorAll('.year-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            container.querySelectorAll('.year-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            filterState.year = btn.dataset.year;
+            triggerSearch();
+        });
+    });
 }
 
 // --- Lightbox: Thumbnail vergroessert anzeigen ---
@@ -722,15 +754,8 @@ document.addEventListener('DOMContentLoaded', () => {
             uniqueCb.addEventListener('change', () => runSearch(searchInput.value.trim()));
         }
 
-        // Jahres-Filter
-        document.querySelectorAll('.year-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                document.querySelectorAll('.year-btn').forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-                filterState.year = btn.dataset.year;
-                triggerSearch();
-            });
-        });
+        // Jahres-Filter wird in renderYearButtons() (nach loadAppConfig)
+        // dynamisch gefuellt — inkl. Click-Handlern.
 
         const sortSelect = document.getElementById('sort-select');
         if (sortSelect) {

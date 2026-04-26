@@ -220,6 +220,7 @@ app.get('/api/config', (req, res) => {
             pageSize: config.search.pageSize,
             occurrencesShown: config.search.occurrencesShown,
             minQueryLength: config.search.minQueryLength,
+            yearFilterOptions: buildYearFilterOptions(config.search.yearFilterYearsBack),
         },
         lightbox: {
             heightVh: config.lightbox.heightVh,
@@ -462,13 +463,36 @@ function buildFtsQuery(term) {
     return words.map(w => `"${w.replace(/"/g, '""')}"`).join(' ');
 }
 
-// Jahr-Parameter ('le2023' / '2024' / '2025' / '2026') in mtime-Range umrechnen
+// Jahr-Parameter in mtime-Range umrechnen.
+// Akzeptiert:
+//   'all'          -> kein Filter
+//   '<year>'       -> genau dieses Jahr
+//   'le<year>'     -> Jahr und alles davor (inklusive)
 function yearToMtimeRange(year) {
     if (!year || year === 'all') return null;
-    if (year === 'le2023') return { min: null, max: Date.UTC(2024, 0, 1) };
+    if (typeof year === 'string' && year.startsWith('le')) {
+        const y = parseInt(year.slice(2), 10);
+        if (!Number.isFinite(y)) return null;
+        return { min: null, max: Date.UTC(y + 1, 0, 1) };
+    }
     const y = parseInt(year, 10);
     if (!Number.isFinite(y)) return null;
     return { min: Date.UTC(y, 0, 1), max: Date.UTC(y + 1, 0, 1) };
+}
+
+// Liste der Jahres-Pills aus Konfig + aktuellem Jahr ableiten.
+// Beispiel: yearsBack=3 in 2026 -> ['Alle', '≤ 2023', '2024', '2025', '2026']
+function buildYearFilterOptions(yearsBack) {
+    const current = new Date().getFullYear();
+    const cutoff = current - yearsBack;
+    const out = [
+        { value: 'all',          label: 'Alle' },
+        { value: 'le' + cutoff,  label: '≤ ' + cutoff },
+    ];
+    for (let y = cutoff + 1; y <= current; y++) {
+        out.push({ value: String(y), label: String(y) });
+    }
+    return out;
 }
 
 app.get('/api/search', (req, res) => {

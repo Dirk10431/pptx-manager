@@ -3,7 +3,8 @@
     "pageSize": 30,
     "maxFtsRows": 5000,
     "occurrencesShown": 30,
-    "minQueryLength": 2
+    "minQueryLength": 2,
+    "yearFilterYearsBack": 3
   },
   "lightbox": {
     "heightVh": 85,
