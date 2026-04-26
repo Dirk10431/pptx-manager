@@ -574,75 +574,149 @@ function renderGroup(g, idx) {
     </div>`;
 }
 
+// --- Bash-Hinweise auf der Scan-Seite ---
+// Sobald ein Pfad erfolgreich validiert wurde, zeigen wir ein Code-Block
+// mit den Befehlen, die der Nutzer in einem zweiten Bash-Fenster ausfuehren
+// soll, um nach dem Scan die Thumbnails zu generieren.
+async function renderBashHints() {
+    const box = document.getElementById('bash-hints');
+    if (!box) return;
+    let projectRoot = '<projekt-pfad>';
+    try {
+        const r = await fetch('/api/project-info');
+        if (r.ok) {
+            const d = await r.json();
+            projectRoot = d.projectRoot || projectRoot;
+        }
+    } catch {}
+    const code = `cd "${projectRoot}"\nnpm run thumbs`;
+    box.innerHTML = `
+        <div class="prompt-box">
+            <span class="prompt-label">▸ Nach dem Scan: Thumbnails generieren</span>
+            <button type="button" class="copy-btn" data-copy-target="bash-cmd">📋 Kopieren</button>
+            <span class="prompt-content" id="bash-cmd">${escapeHtml(code)}</span>
+        </div>
+        <p style="font-size:12px; color:var(--muted); margin-top:8px;">
+            Oeffne ein zweites Git-Bash-Fenster, fuege die zwei Zeilen ein und druecke Enter. Der CLI-Lauf braucht je nach Datenmenge zwischen 10 Minuten und 2 Stunden — abbrechbar mit <strong>Strg+C</strong>, beim naechsten Start macht er an der Stelle weiter.
+        </p>
+    `;
+    box.style.display = 'block';
+    // Copy-Button verdrahten
+    const cbtn = box.querySelector('.copy-btn');
+    if (cbtn) {
+        cbtn.addEventListener('click', () => {
+            const target = document.getElementById(cbtn.dataset.copyTarget);
+            if (!target) return;
+            navigator.clipboard.writeText(target.textContent).then(() => {
+                const orig = cbtn.innerHTML;
+                cbtn.innerHTML = '✓ Kopiert';
+                cbtn.style.color = 'var(--success)';
+                setTimeout(() => { cbtn.innerHTML = orig; cbtn.style.color = ''; }, 1800);
+            }).catch(() => {
+                cbtn.innerHTML = '✗ Fehler';
+                setTimeout(() => { cbtn.innerHTML = '📋 Kopieren'; }, 1800);
+            });
+        });
+    }
+}
+
+// Bei jedem erfolgreichen Pfad-Check Bash-Hinweise (re-)rendern.
+// Wird in checkPath() unten getriggert via Hook.
+const __originalCheckPath = checkPath;
+checkPath = async function patchedCheckPath() {
+    await __originalCheckPath();
+    // Wenn der Scan-Button nicht mehr disabled ist, war der Check erfolgreich
+    const scanBtn = document.getElementById('btn-scan');
+    if (scanBtn && !scanBtn.disabled) {
+        renderBashHints();
+    }
+};
+
 // --- Init ---
 document.addEventListener('DOMContentLoaded', () => {
-    // Config zuerst laden (setzt CSS-Variablen + APP_CONFIG-Werte fuer Suche)
+    // Config laden (setzt CSS-Variablen + APP_CONFIG-Werte)
     loadAppConfig();
     loadStats();
 
+    // --- Scan-Seite (Folder-Picker, Pfad-Check, Scan starten) ---
     const input = document.getElementById('folder-path');
-    input.value = loadLastPath();
+    if (input) {
+        input.value = loadLastPath();
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                checkPath();
+            }
+        });
+        const btnPick = document.getElementById('btn-pick-folder');
+        const btnCheck = document.getElementById('btn-check');
+        const btnScan = document.getElementById('btn-scan');
+        if (btnPick)  btnPick.addEventListener('click', pickFolder);
+        if (btnCheck) btnCheck.addEventListener('click', checkPath);
+        if (btnScan)  btnScan.addEventListener('click', startScan);
 
-    document.getElementById('btn-pick-folder').addEventListener('click', pickFolder);
-    document.getElementById('btn-check').addEventListener('click', checkPath);
-    document.getElementById('btn-scan').addEventListener('click', startScan);
+        // Falls bei Seitenaufruf bereits ein Pfad in der History steht und ein
+        // Scan moeglich waere, koennte hier auto-validiert werden — wir machen
+        // das aber nicht, damit der User die Kontrolle behaelt.
+    }
 
-    // Enter im Pfad-Feld = Pfad pruefen
-    input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            checkPath();
-        }
-    });
-
-    // Suchfeld: Tippen triggert debounce-Suche
+    // --- Such-Seite (Suche + Filter) ---
     const searchInput = document.getElementById('search-input');
-    searchInput.addEventListener('input', () => {
-        clearTimeout(searchTimer);
-        searchTimer = setTimeout(() => runSearch(searchInput.value.trim()), 250);
-    });
-
-    // Filter-Checkbox: Bei Umschalten neu suchen
-    document.getElementById('filter-unique-only').addEventListener('change', () => {
-        runSearch(searchInput.value.trim());
-    });
-
-    // Jahres-Filter (Pill-Buttons)
-    document.querySelectorAll('.year-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            document.querySelectorAll('.year-btn').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            filterState.year = btn.dataset.year;
-            triggerSearch();
+    if (searchInput) {
+        searchInput.addEventListener('input', () => {
+            clearTimeout(searchTimer);
+            searchTimer = setTimeout(() => runSearch(searchInput.value.trim()), 250);
         });
-    });
+        const uniqueCb = document.getElementById('filter-unique-only');
+        if (uniqueCb) {
+            uniqueCb.addEventListener('change', () => runSearch(searchInput.value.trim()));
+        }
 
-    // Sortierung (Dropdown)
-    const sortSelect = document.getElementById('sort-select');
-    if (sortSelect) {
-        sortSelect.addEventListener('change', () => {
-            filterState.sort = sortSelect.value;
-            triggerSearch();
-        });
-    }
-
-    // Dateinamen-Filter (mit Debounce, separat vom Such-Debounce)
-    const filenameInput = document.getElementById('filter-filename');
-    let filenameTimer = null;
-    if (filenameInput) {
-        filenameInput.addEventListener('input', () => {
-            clearTimeout(filenameTimer);
-            filenameTimer = setTimeout(() => {
-                filterState.filename = filenameInput.value.trim();
+        // Jahres-Filter
+        document.querySelectorAll('.year-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.year-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                filterState.year = btn.dataset.year;
                 triggerSearch();
-            }, 250);
+            });
         });
+
+        const sortSelect = document.getElementById('sort-select');
+        if (sortSelect) {
+            sortSelect.addEventListener('change', () => {
+                filterState.sort = sortSelect.value;
+                triggerSearch();
+            });
+        }
+
+        const filenameInput = document.getElementById('filter-filename');
+        let filenameTimer = null;
+        if (filenameInput) {
+            filenameInput.addEventListener('input', () => {
+                clearTimeout(filenameTimer);
+                filenameTimer = setTimeout(() => {
+                    filterState.filename = filenameInput.value.trim();
+                    triggerSearch();
+                }, 250);
+            });
+        }
+
+        // Hauptpfade laden + Pills rendern (nur auf Such-Seite)
+        loadAndRenderRoots();
     }
 
-    // Hauptpfade laden + Pills rendern
-    loadAndRenderRoots();
-
-    // Reset-Button
+    // Reset-Button (kann auf beiden Seiten vorkommen)
     const resetBtn = document.getElementById('btn-reset');
     if (resetBtn) resetBtn.addEventListener('click', resetIndex);
+
+    // Falls beim Aufruf der Scan-Seite bereits ein Scan laeuft → Polling starten
+    if (document.getElementById('progress-card')) {
+        fetch('/api/scan/status').then(r => r.json()).then(state => {
+            if (state.running) {
+                document.getElementById('progress-card').style.display = 'block';
+                pollInterval = setInterval(updateProgress, 500);
+            }
+        }).catch(() => {});
+    }
 });

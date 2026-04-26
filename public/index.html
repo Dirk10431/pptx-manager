@@ -43,26 +43,14 @@
         </div>
     </section>
 
-    <!-- Scan -->
-    <section class="card">
-        <div class="section-label">Ordner scannen</div>
-        <p>Wähle einen Ordner mit PPTX-Dateien aus oder gib den Pfad ein. Unterordner werden automatisch mitgescannt.</p>
-
-        <div class="form-group">
-            <div class="opt-label">Ordner-Pfad</div>
-            <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                <input type="text" id="folder-path" placeholder="z.B. C:/Users/.../Seminare" autocomplete="off" style="flex:1; min-width:260px;">
-                <button class="act-btn" id="btn-pick-folder" type="button">Ordner wählen…</button>
-            </div>
+    <!-- Scan-Verwaltung als Subpage -->
+    <a href="/scan.html" class="link-card">
+        <div class="link-card-text">
+            <div class="link-card-title">Index verwalten / Ordner scannen</div>
+            <div class="link-card-sub">Neue Ordner indizieren, Index zurücksetzen, Scan-Fortschritt</div>
         </div>
-
-        <div class="action-row" style="margin-top:14px;">
-            <button class="act-btn" id="btn-check">Pfad prüfen</button>
-            <button class="go-btn" id="btn-scan" disabled style="flex:1;">Scan starten</button>
-        </div>
-
-        <div id="check-result" style="margin-top:14px;"></div>
-    </section>
+        <span class="link-card-arrow">→</span>
+    </a>
 
     <!-- Volltextsuche -->
     <section class="card">
@@ -118,19 +106,6 @@
         <div id="search-results"></div>
     </section>
 
-    <!-- Scan-Fortschritt -->
-    <section class="card" id="progress-card" style="display:none;">
-        <div class="section-label">Scan läuft …</div>
-        <p><strong>Aktuelle Datei:</strong> <span id="progress-current">-</span></p>
-        <div class="progress-bar"><div class="progress-bar-fill" id="progress-fill"></div></div>
-        <p><span id="progress-text">0 / 0</span></p>
-        <div class="meta-grid" style="margin-top:14px;">
-            <div class="meta-item">Neu <strong id="progress-added">0</strong></div>
-            <div class="meta-item">Aktualisiert <strong id="progress-updated">0</strong></div>
-            <div class="meta-item">Unverändert <strong id="progress-skipped">0</strong></div>
-            <div class="meta-item">Fehler <strong id="progress-failed">0</strong></div>
-        </div>
-    </section>
 
 </main>
 

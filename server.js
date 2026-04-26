@@ -199,6 +199,18 @@ app.get('/api/scan-roots', (req, res) => {
     res.json({ roots: detectScanRoots(db) });
 });
 
+// --- API: Projekt-Info (Pfad, Versionsnummer) fuer UI-Hinweise ---
+// Wird genutzt, um in der Scan-Seite Bash-Befehle wie
+//   cd "<projectRoot>"
+//   npm run thumbs
+// korrekt anzuzeigen — ohne dass das Frontend den Pfad raten muss.
+app.get('/api/project-info', (req, res) => {
+    res.json({
+        projectRoot: __dirname,
+        platform: process.platform,
+    });
+});
+
 // --- API: Frontend-relevante Config-Werte ---
 // Wird beim Laden der Seite einmal gefetched, damit Lightbox-Groesse,
 // Page-Size etc. zentral aus config.json kommen.
