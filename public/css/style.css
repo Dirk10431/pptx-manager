@@ -308,3 +308,71 @@ mark {
         font-size: 1.2rem;
     }
 }
+
+/* === Lightbox: vergroesserte Folien-Vorschau === */
+.lightbox {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+}
+.lightbox-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.92);
+    backdrop-filter: blur(4px);
+    cursor: zoom-out;
+}
+.lightbox-img {
+    position: relative;
+    /* Werte werden zur Laufzeit aus /api/config gesetzt (CSS-Variablen).
+       Default 85vh / 95vw greift, falls Config noch nicht geladen ist. */
+    height: var(--lightbox-height-vh, 85vh);
+    width: auto;
+    max-width: var(--lightbox-max-width-vw, 95vw);
+    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
+    border-radius: 4px;
+    /* Bewusst pixeligen Look akzeptieren — wir skalieren ein 480x270 PNG hoch */
+    image-rendering: auto;
+}
+.lightbox-caption {
+    position: absolute;
+    bottom: 1rem;
+    left: 50%;
+    transform: translateX(-50%);
+    color: white;
+    background: rgba(0, 0, 0, 0.6);
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    max-width: calc(100vw - 4rem);
+    text-align: center;
+}
+.lightbox-close {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    width: 2.5rem;
+    height: 2.5rem;
+    border: none;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.15);
+    color: white;
+    font-size: 1.6rem;
+    cursor: pointer;
+    line-height: 1;
+    transition: background 0.15s;
+}
+.lightbox-close:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+.thumb-wrap {
+    cursor: zoom-in;
+    transition: transform 0.1s;
+}
+.thumb-wrap:hover {
+    transform: scale(1.02);
+}

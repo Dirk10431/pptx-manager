@@ -107,6 +107,16 @@
 
     </main>
 
+    <!-- Lightbox: zeigt geklicktes Thumbnail in voller Bildschirmgroesse.
+         Bewusst hochskaliert (kein hochaufloesender Render) — wird unscharf,
+         genuegt aber zur visuellen Identifikation. -->
+    <div id="lightbox" class="lightbox" style="display:none;" role="dialog" aria-label="Folien-Vorschau gross">
+        <div class="lightbox-backdrop"></div>
+        <button class="lightbox-close" aria-label="Schliessen" title="Schliessen (Esc)">&times;</button>
+        <img class="lightbox-img" alt="Folien-Vorschau">
+        <div class="lightbox-caption"></div>
+    </div>
+
     <footer class="footer">
         <p>pptx-manager v0.1.0 | Laeuft lokal auf 127.0.0.1:3002</p>
     </footer>

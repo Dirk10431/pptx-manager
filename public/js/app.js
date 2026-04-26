@@ -2,6 +2,57 @@
 // app.js - Frontend-Logik pptx-manager
 // =============================================================
 
+// --- Config (wird beim DOMContentLoaded aus /api/config geholt) ---
+// Defaults entsprechen den Server-Defaults; werden ueberschrieben, sobald
+// /api/config antwortet.
+const APP_CONFIG = {
+    search: { pageSize: 30, occurrencesShown: 30, minQueryLength: 2 },
+    lightbox: { heightVh: 85, maxWidthVw: 95 },
+};
+
+async function loadAppConfig() {
+    try {
+        const response = await fetch('/api/config');
+        if (!response.ok) return;
+        const cfg = await response.json();
+        if (cfg.search)   Object.assign(APP_CONFIG.search, cfg.search);
+        if (cfg.lightbox) Object.assign(APP_CONFIG.lightbox, cfg.lightbox);
+        // CSS-Variablen fuer Lightbox setzen
+        document.documentElement.style.setProperty('--lightbox-height-vh', APP_CONFIG.lightbox.heightVh + 'vh');
+        document.documentElement.style.setProperty('--lightbox-max-width-vw', APP_CONFIG.lightbox.maxWidthVw + 'vw');
+    } catch (err) {
+        console.warn('Config konnte nicht geladen werden, nutze Defaults:', err);
+    }
+}
+
+// --- Lightbox: Thumbnail vergroessert anzeigen ---
+// Bewusst hochskaliert (kein neuer Render); wird unscharf, reicht aber zur
+// visuellen Identifikation. ESC oder Klick auf Hintergrund schliesst.
+function openLightbox(imgSrc, caption) {
+    const lb = document.getElementById('lightbox');
+    if (!lb) return;
+    lb.querySelector('.lightbox-img').src = imgSrc;
+    lb.querySelector('.lightbox-caption').textContent = caption || '';
+    lb.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+}
+function closeLightbox() {
+    const lb = document.getElementById('lightbox');
+    if (!lb) return;
+    lb.style.display = 'none';
+    lb.querySelector('.lightbox-img').src = '';
+    document.body.style.overflow = '';
+}
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeLightbox();
+});
+document.addEventListener('DOMContentLoaded', () => {
+    const lb = document.getElementById('lightbox');
+    if (!lb) return;
+    lb.querySelector('.lightbox-backdrop').addEventListener('click', closeLightbox);
+    lb.querySelector('.lightbox-close').addEventListener('click', closeLightbox);
+});
+
 // --- Statistik laden ---
 async function loadStats() {
     try {
@@ -196,21 +247,31 @@ function escapeHtml(str) {
         .replace(/"/g, '&quot;');
 }
 
-async function runSearch(term) {
+// Aktueller Suchzustand fuer "Mehr anzeigen"
+let searchState = { term: '', offset: 0, limit: 30, accumulated: [] };
+
+async function runSearch(term, append = false) {
     const resultsEl = document.getElementById('search-results');
     const summaryEl = document.getElementById('search-summary');
+    const pageSize = APP_CONFIG.search.pageSize;
+    const minLen   = APP_CONFIG.search.minQueryLength;
 
-    if (!term || term.length < 2) {
-        resultsEl.innerHTML = '';
+    if (!append) {
+        if (!term || term.length < minLen) {
+            resultsEl.innerHTML = '';
+            summaryEl.textContent = '';
+            searchState = { term: '', offset: 0, limit: pageSize, accumulated: [] };
+            return;
+        }
+        resultsEl.innerHTML = '<p style="color: var(--text-light);">Suche...</p>';
         summaryEl.textContent = '';
-        return;
+        searchState = { term, offset: 0, limit: pageSize, accumulated: [] };
     }
 
-    resultsEl.innerHTML = '<p style="color: var(--text-light);">Suche...</p>';
-    summaryEl.textContent = '';
-
     const uniqueOnly = document.getElementById('filter-unique-only').checked;
-    const url = '/api/search?q=' + encodeURIComponent(term) + (uniqueOnly ? '&uniqueOnly=1' : '');
+    const url = '/api/search?q=' + encodeURIComponent(term)
+              + (uniqueOnly ? '&uniqueOnly=1' : '')
+              + `&offset=${searchState.offset}&limit=${searchState.limit}`;
 
     try {
         const response = await fetch(url);
@@ -221,23 +282,36 @@ async function runSearch(term) {
             return;
         }
 
-        if (!data.groups || data.groups.length === 0) {
+        if (!append && (!data.groups || data.groups.length === 0)) {
             resultsEl.innerHTML = '<p style="color: var(--text-light);">Keine Treffer.</p>';
             summaryEl.textContent = uniqueOnly
-                ? `Gesamt ${data.totalGroups} Gruppen, davon 0 eindeutige.`
+                ? `Gesamt ${data.totalGroupsBeforeFilter} Gruppen, davon 0 eindeutige.`
                 : '';
             return;
         }
 
-        // Summary-Zeile
-        const uniqueCount = data.groups.filter(g => g.count === 1).length;
-        summaryEl.textContent = uniqueOnly
-            ? `${data.shownGroups} eindeutige Folien (von ${data.totalGroups} Gruppen, ${data.totalOccurrences} Treffer gesamt).`
-            : `${data.totalGroups} Gruppen (${uniqueCount} davon eindeutig), ${data.totalOccurrences} Treffer gesamt.`;
+        searchState.accumulated.push(...data.groups);
 
-        // Gruppen rendern
-        const groupsHtml = data.groups.map((g, idx) => renderGroup(g, idx)).join('');
-        resultsEl.innerHTML = `<div class="search-groups">${groupsHtml}</div>`;
+        // Summary-Zeile
+        summaryEl.textContent = uniqueOnly
+            ? `${searchState.accumulated.length} von ${data.totalGroups} eindeutigen Folien angezeigt (${data.totalOccurrences} Treffer gesamt).`
+            : `${searchState.accumulated.length} von ${data.totalGroups} Gruppen angezeigt (${data.totalOccurrences} Treffer gesamt).`;
+
+        // Gruppen rendern (kompletter Re-Render bei accumulated)
+        const groupsHtml = searchState.accumulated.map((g, idx) => renderGroup(g, idx)).join('');
+        const moreBtnHtml = data.hasMore
+            ? `<div style="text-align:center; margin: 1rem 0;"><button class="btn btn-secondary" id="btn-load-more">Naechste ${searchState.limit} laden (${data.totalGroups - searchState.accumulated.length} verbleibend)</button></div>`
+            : '';
+        resultsEl.innerHTML = `<div class="search-groups">${groupsHtml}</div>${moreBtnHtml}`;
+
+        // "Mehr"-Button verdrahten
+        const moreBtn = document.getElementById('btn-load-more');
+        if (moreBtn) {
+            moreBtn.addEventListener('click', () => {
+                searchState.offset += searchState.limit;
+                runSearch(searchState.term, true);
+            });
+        }
 
         // Klick-Handler fuer "Alle X Vorkommen zeigen" anhaengen
         resultsEl.querySelectorAll('.group-toggle').forEach(btn => {
@@ -251,6 +325,18 @@ async function runSearch(term) {
                 }
             });
         });
+
+        // Klick auf Thumbnail -> Lightbox (Event-Delegation)
+        resultsEl.querySelectorAll('.thumb-wrap[data-slide-id]').forEach(wrap => {
+            wrap.addEventListener('click', () => {
+                const slideId = wrap.dataset.slideId;
+                const img = wrap.querySelector('img');
+                // Wenn das Bild fehlerhaft / nicht geladen ist, nichts tun
+                if (!img || img.style.display === 'none') return;
+                const caption = wrap.dataset.caption || '';
+                openLightbox(`/api/thumb/${slideId}`, caption);
+            });
+        });
     } catch (err) {
         resultsEl.innerHTML = `<p style="color: var(--danger);">Netzwerkfehler: ${escapeHtml(err.message)}</p>`;
     }
@@ -262,14 +348,17 @@ async function runSearch(term) {
 function thumbnailHtml(slideId, opts = {}) {
     const width = opts.width || 200;
     const height = Math.round(width * 9 / 16);
+    const caption = opts.caption ? ` data-caption="${escapeHtml(opts.caption)}"` : '';
     return `
-        <div class="thumb-wrap" style="width: ${width}px; height: ${height}px; flex-shrink: 0; background: #f5f5f5; border: 1px solid var(--border); border-radius: 4px; overflow: hidden; display: flex; align-items: center; justify-content: center;">
+        <div class="thumb-wrap" data-slide-id="${slideId}"${caption}
+             style="width: ${width}px; height: ${height}px; flex-shrink: 0; background: #f5f5f5; border: 1px solid var(--border); border-radius: 4px; overflow: hidden; display: flex; align-items: center; justify-content: center;"
+             title="Klicken fuer grosse Ansicht">
             <img
                 src="/api/thumb/${slideId}"
                 alt="Folien-Vorschau"
                 loading="lazy"
                 style="width: 100%; height: 100%; object-fit: contain;"
-                onerror="this.style.display='none'; this.parentElement.innerHTML='<span style=\\'color:var(--text-light);font-size:0.75rem;text-align:center;padding:0.25rem;\\'>Vorschau nicht verfuegbar</span>';"
+                onerror="this.style.display='none'; this.parentElement.style.cursor='default'; this.parentElement.innerHTML='<span style=\\'color:var(--text-light);font-size:0.75rem;text-align:center;padding:0.25rem;\\'>Vorschau nicht verfuegbar</span>';"
             >
         </div>
     `;
@@ -284,18 +373,29 @@ function renderGroup(g, idx) {
         ? 'Einzigartig'
         : `${g.count}&times; in ${g.fileCount} ${g.fileCount === 1 ? 'Datei' : 'Dateien'}`;
 
-    const occurrencesHtml = g.occurrences.map(o => `
+    // Vorkommen begrenzen: bei sehr grossen Gruppen (z.B. 8997 Kopien
+    // einer Boilerplate-Folie) wuerde die Tabelle den Browser einfrieren.
+    // Anzahl kommt aus config.json (search.occurrencesShown).
+    const OCCURRENCES_INITIAL = APP_CONFIG.search.occurrencesShown;
+    const visibleOcc = g.occurrences.slice(0, OCCURRENCES_INITIAL);
+    const hiddenOccCount = g.occurrences.length - visibleOcc.length;
+
+    const occurrencesHtml = visibleOcc.map(o => `
         <tr>
-            <td style="width: 130px;">${thumbnailHtml(o.slideId, { width: 120 })}</td>
+            <td style="width: 130px;">${thumbnailHtml(o.slideId, { width: 120, caption: `Folie ${o.slideIndex} — ${o.fileName}` })}</td>
             <td style="vertical-align: top;"><span class="badge">Folie ${o.slideIndex}</span></td>
             <td style="font-size: 0.85rem; vertical-align: top;" title="${escapeHtml(o.filePath)}">${escapeHtml(o.fileName)}</td>
         </tr>
     `).join('');
 
+    const occurrencesFooter = hiddenOccCount > 0
+        ? `<tr><td colspan="3" style="text-align:center; padding:0.75rem; color:var(--text-light); font-style: italic;">+ ${hiddenOccCount} weitere Vorkommen ausgeblendet (Performance-Schutz). Verfeinere die Suche, um sie zu sehen.</td></tr>`
+        : '';
+
     return `
     <div class="group-card" style="border: 1px solid var(--border); border-radius: 6px; padding: 0.85rem 1rem; margin-bottom: 0.75rem;">
         <div style="display: flex; gap: 1rem; align-items: flex-start; flex-wrap: wrap;">
-            ${thumbnailHtml(rep.slideId, { width: 200 })}
+            ${thumbnailHtml(rep.slideId, { width: 200, caption: `Folie ${rep.slideIndex} — ${rep.fileName}` })}
             <div style="flex: 1; min-width: 260px;">
                 <div style="margin-bottom: 0.25rem;">
                     <span class="badge ${badgeClass}">${badgeText}</span>
@@ -319,7 +419,7 @@ function renderGroup(g, idx) {
                     <thead>
                         <tr><th style="width: 130px;">Vorschau</th><th style="width: 7rem;">Folie</th><th>Datei</th></tr>
                     </thead>
-                    <tbody>${occurrencesHtml}</tbody>
+                    <tbody>${occurrencesHtml}${occurrencesFooter}</tbody>
                 </table>
             </div>
         ` : ''}
@@ -328,6 +428,8 @@ function renderGroup(g, idx) {
 
 // --- Init ---
 document.addEventListener('DOMContentLoaded', () => {
+    // Config zuerst laden (setzt CSS-Variablen + APP_CONFIG-Werte fuer Suche)
+    loadAppConfig();
     loadStats();
 
     const input = document.getElementById('folder-path');

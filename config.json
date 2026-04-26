@@ -1,0 +1,12 @@
+{
+  "search": {
+    "pageSize": 30,
+    "maxFtsRows": 5000,
+    "occurrencesShown": 30,
+    "minQueryLength": 2
+  },
+  "lightbox": {
+    "heightVh": 85,
+    "maxWidthVw": 95
+  }
+}

@@ -13,6 +13,10 @@ const { initDb, checkFingerprintCompatibility, setFingerprintVersion, clearScanD
 const { runScan, scanState, findPptxFiles } = require('./lib/scanner');
 const { FINGERPRINT_VERSION } = require('./lib/fingerprint');
 const { generateThumbnail, thumbnailCachePath } = require('./lib/thumbnailer');
+const { loadConfig } = require('./lib/config');
+
+const config = loadConfig();
+console.log('[CONFIG] geladen:', JSON.stringify(config));
 
 const PORT = process.env.PORT || 3002;
 const HOST = '127.0.0.1'; // NUR lokal, nicht im Netzwerk!
@@ -44,6 +48,23 @@ if (!compat.compatible) {
 }
 
 // --- API: Status/Statistik ---
+// --- API: Frontend-relevante Config-Werte ---
+// Wird beim Laden der Seite einmal gefetched, damit Lightbox-Groesse,
+// Page-Size etc. zentral aus config.json kommen.
+app.get('/api/config', (req, res) => {
+    res.json({
+        search: {
+            pageSize: config.search.pageSize,
+            occurrencesShown: config.search.occurrencesShown,
+            minQueryLength: config.search.minQueryLength,
+        },
+        lightbox: {
+            heightVh: config.lightbox.heightVh,
+            maxWidthVw: config.lightbox.maxWidthVw,
+        },
+    });
+});
+
 app.get('/api/stats', (req, res) => {
     const presentationCount = db.prepare('SELECT COUNT(*) AS c FROM presentations').get().c;
     const slideCount = db.prepare('SELECT COUNT(*) AS c FROM slides').get().c;
@@ -107,7 +128,15 @@ app.get('/api/thumb/:slideId', async (req, res) => {
         return res.sendFile(outPath);
     }
 
-    // 2) Noch nicht da -> lazy generieren (Dedupe-Key = textHash)
+    // 2) Standardfall: kein Cache vorhanden -> 404. Nutzer erzeugt fehlende
+    //    Thumbnails per `npm run thumbs` (Batch). Lazy-Render war frueher
+    //    Default, hat aber pro Anfrage ~15s gekostet -> abgeschaltet.
+    //    Opt-in fuer Einzelfall: ?generate=1 erzwingt sofortige Generierung.
+    if (req.query.generate !== '1') {
+        return res.status(404).json({ error: 'Thumbnail nicht im Cache. npm run thumbs ausfuehren.' });
+    }
+
+    // 3) Lazy-Generierung explizit angefragt
     try {
         let promise = thumbPending.get(textHash);
         if (!promise) {
@@ -274,7 +303,7 @@ app.get('/api/search', (req, res) => {
             JOIN presentations p ON p.id = s.presentation_id
             WHERE slides_fts MATCH ?
             ORDER BY rank
-            LIMIT 5000
+            LIMIT ${config.search.maxFtsRows}
         `);
         const rows = stmt.all(ftsQuery);
 
@@ -327,16 +356,22 @@ app.get('/api/search', (req, res) => {
             groups = groups.filter(g => g.count === 1);
         }
 
-        // Auf 200 Gruppen begrenzen (Rendering-Schutz)
-        const limited = groups.slice(0, 200);
+        // Pagination: Default aus config.search.pageSize.
+        const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
+        const limit  = Math.min(200, Math.max(1, parseInt(req.query.limit, 10) || config.search.pageSize));
+        const limited = groups.slice(offset, offset + limit);
 
         res.json({
             query: q,
             uniqueOnly,
             groups: limited,
-            totalGroups,
+            totalGroups: groups.length,        // nach uniqueOnly-Filter
+            totalGroupsBeforeFilter: totalGroups,
             totalOccurrences,
             shownGroups: limited.length,
+            offset,
+            limit,
+            hasMore: offset + limited.length < groups.length,
         });
     } catch (err) {
         res.status(400).json({ error: 'Suchfehler: ' + err.message });
