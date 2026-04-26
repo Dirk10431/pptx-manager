@@ -376,3 +376,51 @@ mark {
 .thumb-wrap:hover {
     transform: scale(1.02);
 }
+
+/* === Filter-Toolbar Pill-Buttons === */
+.btn-pill {
+    padding: 0.3rem 0.75rem;
+    font-size: 0.85rem;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: white;
+    color: var(--text);
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.btn-pill:hover {
+    background: var(--ci-primary-bg);
+    border-color: var(--ci-primary-light);
+}
+.btn-pill.active {
+    background: var(--ci-primary);
+    color: white;
+    border-color: var(--ci-primary);
+}
+.btn-pill.active:hover {
+    background: var(--ci-primary-dark);
+}
+.root-checkbox {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.25rem 0.6rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: white;
+    cursor: pointer;
+    font-size: 0.85rem;
+    user-select: none;
+    transition: background 0.15s, border-color 0.15s;
+}
+.root-checkbox:hover {
+    background: var(--ci-primary-bg);
+    border-color: var(--ci-primary-light);
+}
+.root-checkbox input {
+    margin: 0;
+}
+.root-checkbox.checked {
+    background: var(--ci-primary-bg);
+    border-color: var(--ci-primary-light);
+}

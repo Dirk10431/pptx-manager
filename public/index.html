@@ -64,11 +64,54 @@
                 <input type="search" id="search-input" placeholder="z.B. Arbeiten unter Spannung, DGUV, Elektrofachkraft ..." autocomplete="off">
             </div>
 
-            <div style="display: flex; gap: 1rem; align-items: center; margin-top: 0.5rem; flex-wrap: wrap;">
-                <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer;">
-                    <input type="checkbox" id="filter-unique-only">
-                    <span>Nur eindeutige Folien zeigen (1&times;)</span>
-                </label>
+            <!-- Filter-Toolbar -->
+            <div class="filter-toolbar" style="margin-top: 0.75rem; display: flex; flex-direction: column; gap: 0.6rem;">
+
+                <!-- Zeile: Jahr + Sortierung + Dateiname -->
+                <div style="display: flex; gap: 1rem; flex-wrap: wrap; align-items: center;">
+
+                    <!-- Jahres-Filter -->
+                    <div class="filter-group" style="display: flex; gap: 0.25rem; align-items: center; flex-wrap: wrap;">
+                        <span style="font-size: 0.85rem; color: var(--text-light); margin-right: 0.25rem;">Jahr:</span>
+                        <button class="btn btn-pill year-btn active" data-year="all">Alle</button>
+                        <button class="btn btn-pill year-btn" data-year="le2023">&le; 2023</button>
+                        <button class="btn btn-pill year-btn" data-year="2024">2024</button>
+                        <button class="btn btn-pill year-btn" data-year="2025">2025</button>
+                        <button class="btn btn-pill year-btn" data-year="2026">2026</button>
+                    </div>
+
+                    <!-- Sortierung -->
+                    <div class="filter-group" style="display: flex; gap: 0.4rem; align-items: center;">
+                        <label for="sort-select" style="font-size: 0.85rem; color: var(--text-light);">Sortierung:</label>
+                        <select id="sort-select" class="form-control" style="padding: 0.3rem 0.5rem; font-size: 0.9rem;">
+                            <option value="relevance">Relevanz</option>
+                            <option value="date_desc">Datum: neuste zuerst</option>
+                            <option value="date_asc">Datum: aelteste zuerst</option>
+                        </select>
+                    </div>
+
+                    <!-- Dateinamen-Filter -->
+                    <div class="filter-group" style="display: flex; gap: 0.4rem; align-items: center; flex: 1; min-width: 180px;">
+                        <label for="filter-filename" style="font-size: 0.85rem; color: var(--text-light); white-space: nowrap;">Datei enthaelt:</label>
+                        <input type="search" id="filter-filename" placeholder="z.B. abvt" autocomplete="off"
+                               style="flex: 1; padding: 0.3rem 0.5rem; font-size: 0.9rem; border: 1px solid var(--border); border-radius: 4px;">
+                    </div>
+
+                    <!-- "Nur eindeutige" -->
+                    <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer; font-size: 0.9rem;">
+                        <input type="checkbox" id="filter-unique-only">
+                        <span>Nur eindeutige Folien</span>
+                    </label>
+                </div>
+
+                <!-- Zeile: Hauptpfade (auto-erkannt) -->
+                <div id="filter-roots-row" style="display: none; gap: 0.5rem; align-items: center; flex-wrap: wrap; padding-top: 0.4rem; border-top: 1px solid var(--border);">
+                    <span style="font-size: 0.85rem; color: var(--text-light);">Hauptpfade:</span>
+                    <div id="filter-roots" style="display: flex; gap: 0.4rem; flex-wrap: wrap;"></div>
+                    <button class="btn btn-pill btn-secondary" id="btn-roots-toggle" style="margin-left: auto; font-size: 0.8rem;">Alle abwaehlen</button>
+                </div>
+
+                <!-- Summary -->
                 <span id="search-summary" style="color: var(--text-light); font-size: 0.9rem;"></span>
             </div>
 

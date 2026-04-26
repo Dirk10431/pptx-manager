@@ -48,6 +48,57 @@ if (!compat.compatible) {
 }
 
 // --- API: Status/Statistik ---
+// --- API: Hauptpfade automatisch erkennen ---
+// Gruppiert alle file_path-Eintraege auf der Tiefe, bei der sich
+// erstmals genug unterschiedliche Praefixe ergeben (>=4). Liefert
+// pro Pfad ein Kurzlabel (letztes Segment), den vollen Praefix und
+// die Anzahl der Praesentationen.
+function detectScanRoots(db) {
+    const paths = db.prepare('SELECT file_path FROM presentations').all().map(r => r.file_path);
+    if (paths.length === 0) return [];
+
+    // Pfad in Segmente zerlegen (Backslash UND Slash unterstuetzen)
+    const splitSegs = (p) => p.split(/[\\/]+/).filter(Boolean);
+
+    // Praefix bis zur Tiefe d (1-basiert, Drive zaehlt als Segment 1)
+    const prefixAt = (segs, d) => segs.slice(0, d).join('\\');
+
+    const allSegs = paths.map(splitSegs);
+
+    // Tiefe finden, bei der genug Aufteilung entsteht (mind. 4 Praefixe)
+    // oder bei der Tiefen-Untersuchung (max 8) stoppen.
+    let bestDepth = 4;
+    for (let d = 1; d <= 8; d++) {
+        const set = new Set(allSegs.map(s => prefixAt(s, d).toLowerCase()));
+        if (set.size >= 4) { bestDepth = d; break; }
+        if (d === 8) bestDepth = d; // Fallback bei sehr homogenen Pfaden
+    }
+
+    // Gruppieren
+    const groups = new Map();
+    for (const segs of allSegs) {
+        const fullPrefix = prefixAt(segs, bestDepth);
+        const key = fullPrefix.toLowerCase();
+        if (!groups.has(key)) {
+            groups.set(key, { fullPath: fullPrefix, count: 0 });
+        }
+        groups.get(key).count++;
+    }
+
+    // Label = letztes Segment (kompakt) oder voller Praefix als Fallback
+    return Array.from(groups.values())
+        .map(g => {
+            const segs = splitSegs(g.fullPath);
+            const label = segs.length > 0 ? segs[segs.length - 1] : g.fullPath;
+            return { label, fullPath: g.fullPath, count: g.count };
+        })
+        .sort((a, b) => b.count - a.count);
+}
+
+app.get('/api/scan-roots', (req, res) => {
+    res.json({ roots: detectScanRoots(db) });
+});
+
 // --- API: Frontend-relevante Config-Werte ---
 // Wird beim Laden der Seite einmal gefetched, damit Lightbox-Groesse,
 // Page-Size etc. zentral aus config.json kommen.
@@ -276,11 +327,22 @@ function buildFtsQuery(term) {
     return words.map(w => `"${w.replace(/"/g, '""')}"`).join(' ');
 }
 
+// Jahr-Parameter ('le2023' / '2024' / '2025' / '2026') in mtime-Range umrechnen
+function yearToMtimeRange(year) {
+    if (!year || year === 'all') return null;
+    if (year === 'le2023') return { min: null, max: Date.UTC(2024, 0, 1) };
+    const y = parseInt(year, 10);
+    if (!Number.isFinite(y)) return null;
+    return { min: Date.UTC(y, 0, 1), max: Date.UTC(y + 1, 0, 1) };
+}
+
 app.get('/api/search', (req, res) => {
     const q = (req.query.q || '').toString().trim();
-    // Query-Parameter: uniqueOnly=1 blendet alle Gruppen mit >1 Vorkommen aus
-    // (nur Folien, die genau einmal vorkommen — typisch: deine individuellen Edits).
     const uniqueOnly = req.query.uniqueOnly === '1' || req.query.uniqueOnly === 'true';
+    const year       = (req.query.year || '').toString();
+    const filename   = (req.query.filename || '').toString().trim();
+    const rootsParam = (req.query.roots || '').toString();
+    const sort       = (req.query.sort || 'relevance').toString();
 
     if (!q) return res.json({ query: '', groups: [], totalGroups: 0, totalOccurrences: 0 });
 
@@ -288,24 +350,51 @@ app.get('/api/search', (req, res) => {
     if (!ftsQuery) return res.json({ query: q, groups: [], totalGroups: 0, totalOccurrences: 0 });
 
     try {
-        // 1) Alle Treffer holen, nach FTS-Rank sortiert (beste zuerst).
-        //    Limit vorm Gruppieren hoch angesetzt, damit wir pro Gruppe nicht
-        //    abgeschnittene Vorkommen bekommen.
+        // SQL-Filter dynamisch zusammensetzen
+        const where = ['slides_fts MATCH ?'];
+        const params = [ftsQuery];
+
+        const yr = yearToMtimeRange(year);
+        if (yr) {
+            if (yr.min !== null) { where.push('p.mtime >= ?'); params.push(yr.min); }
+            if (yr.max !== null) { where.push('p.mtime < ?');  params.push(yr.max); }
+        }
+
+        if (filename) {
+            // Case-insensitive Substring-Suche im Dateinamen
+            where.push('LOWER(p.file_name) LIKE LOWER(?)');
+            params.push('%' + filename + '%');
+        }
+
+        // Hauptpfad-Filter: Komma-separierte Liste voller Praefixe.
+        // Wenn nichts angegeben -> kein Filter (alles zugelassen).
+        const roots = rootsParam ? rootsParam.split('|').map(s => s.trim()).filter(Boolean) : [];
+        if (roots.length > 0) {
+            const placeholders = roots.map(() => 'LOWER(p.file_path) LIKE LOWER(?)').join(' OR ');
+            where.push('(' + placeholders + ')');
+            for (const r of roots) params.push(r + '%');
+        }
+
+        // Sortierung: Relevanz (rank) oder Datum
+        let orderBy = 'ORDER BY rank';
+        if (sort === 'date_desc') orderBy = 'ORDER BY p.mtime DESC, rank';
+        else if (sort === 'date_asc') orderBy = 'ORDER BY p.mtime ASC, rank';
+
         const stmt = db.prepare(`
             SELECT
                 s.id, s.slide_index, s.title, s.text_content,
                 s.text_hash, s.exact_hash,
-                p.id AS presentation_id, p.file_name, p.file_path,
+                p.id AS presentation_id, p.file_name, p.file_path, p.mtime,
                 snippet(slides_fts, 1, '<mark>', '</mark>', '...', 20) AS snippet,
                 rank AS fts_rank
             FROM slides_fts
             JOIN slides s ON s.id = slides_fts.rowid
             JOIN presentations p ON p.id = s.presentation_id
-            WHERE slides_fts MATCH ?
-            ORDER BY rank
+            WHERE ${where.join(' AND ')}
+            ${orderBy}
             LIMIT ${config.search.maxFtsRows}
         `);
-        const rows = stmt.all(ftsQuery);
+        const rows = stmt.all(...params);
 
         // 2) Nach text_hash gruppieren. Erste Zeile pro Gruppe (beste FTS-Rank)
         //    wird Repraesentant, die restlichen Vorkommen hinten dran.
@@ -323,6 +412,7 @@ app.get('/api/search', (req, res) => {
                         presentationId: row.presentation_id,
                         fileName: row.file_name,
                         filePath: row.file_path,
+                        mtime: row.mtime,
                     },
                     occurrences: [],
                     fileSet: new Set(),
@@ -336,6 +426,7 @@ app.get('/api/search', (req, res) => {
                 presentationId: row.presentation_id,
                 fileName: row.file_name,
                 filePath: row.file_path,
+                mtime: row.mtime,
             });
             g.fileSet.add(row.presentation_id);
         }

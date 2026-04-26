@@ -250,6 +250,90 @@ function escapeHtml(str) {
 // Aktueller Suchzustand fuer "Mehr anzeigen"
 let searchState = { term: '', offset: 0, limit: 30, accumulated: [] };
 
+// Aktuelle Filter-Einstellungen (werden beim Wechsel gesetzt; loesen Re-Search aus)
+const filterState = {
+    year: 'all',          // 'all' | 'le2023' | '2024' | '2025' | '2026'
+    sort: 'relevance',    // 'relevance' | 'date_desc' | 'date_asc'
+    filename: '',         // Substring im Dateinamen
+    activeRoots: null,    // Set<fullPath> mit aktivierten Roots; null = alle
+};
+
+let allRoots = []; // Aus /api/scan-roots geladene Hauptpfade
+
+// --- Hauptpfade laden + als Checkbox-Pills rendern ---
+async function loadAndRenderRoots() {
+    try {
+        const response = await fetch('/api/scan-roots');
+        const data = await response.json();
+        allRoots = data.roots || [];
+
+        const row = document.getElementById('filter-roots-row');
+        const list = document.getElementById('filter-roots');
+        if (!row || !list) return;
+
+        if (allRoots.length === 0) {
+            row.style.display = 'none';
+            return;
+        }
+
+        // Standard: alle aktiv
+        filterState.activeRoots = new Set(allRoots.map(r => r.fullPath));
+
+        list.innerHTML = allRoots.map(r => `
+            <label class="root-checkbox checked" data-root="${escapeHtml(r.fullPath)}" title="${escapeHtml(r.fullPath)} (${r.count} Dateien)">
+                <input type="checkbox" checked>
+                <span>${escapeHtml(r.label)}</span>
+                <span style="color: var(--text-light); font-size: 0.75rem;">(${r.count})</span>
+            </label>
+        `).join('');
+
+        row.style.display = 'flex';
+
+        // Klick-Handler je Pill
+        list.querySelectorAll('.root-checkbox').forEach(el => {
+            el.addEventListener('click', (e) => {
+                if (e.target.tagName === 'INPUT') return; // doppelt vermeiden
+                const cb = el.querySelector('input');
+                cb.checked = !cb.checked;
+                el.classList.toggle('checked', cb.checked);
+                const root = el.dataset.root;
+                if (cb.checked) filterState.activeRoots.add(root);
+                else filterState.activeRoots.delete(root);
+                triggerSearch();
+            });
+        });
+
+        // "Alle abwaehlen / aktivieren"
+        const toggleBtn = document.getElementById('btn-roots-toggle');
+        if (toggleBtn) {
+            toggleBtn.addEventListener('click', () => {
+                const allActive = filterState.activeRoots.size === allRoots.length;
+                if (allActive) {
+                    filterState.activeRoots.clear();
+                } else {
+                    filterState.activeRoots = new Set(allRoots.map(r => r.fullPath));
+                }
+                // UI synchronisieren
+                list.querySelectorAll('.root-checkbox').forEach(el => {
+                    const cb = el.querySelector('input');
+                    cb.checked = filterState.activeRoots.has(el.dataset.root);
+                    el.classList.toggle('checked', cb.checked);
+                });
+                toggleBtn.textContent = allActive ? 'Alle aktivieren' : 'Alle abwaehlen';
+                triggerSearch();
+            });
+        }
+    } catch (err) {
+        console.warn('Hauptpfade konnten nicht geladen werden:', err);
+    }
+}
+
+// Wird von Filter-Aenderungen aufgerufen
+function triggerSearch() {
+    const term = document.getElementById('search-input').value.trim();
+    runSearch(term);
+}
+
 async function runSearch(term, append = false) {
     const resultsEl = document.getElementById('search-results');
     const summaryEl = document.getElementById('search-summary');
@@ -269,8 +353,30 @@ async function runSearch(term, append = false) {
     }
 
     const uniqueOnly = document.getElementById('filter-unique-only').checked;
+
+    // Aktive Hauptpfade als Pipe-getrennte Liste (kommt nur mit, wenn nicht alle aktiv)
+    let rootsParam = '';
+    if (filterState.activeRoots && allRoots.length > 0) {
+        const active = Array.from(filterState.activeRoots);
+        if (active.length === 0) {
+            // Nichts aktiv -> sofort leeres Ergebnis, kein Server-Roundtrip noetig
+            const resultsEl2 = document.getElementById('search-results');
+            const summaryEl2 = document.getElementById('search-summary');
+            resultsEl2.innerHTML = '<p style="color: var(--text-light);">Kein Hauptpfad ausgewaehlt — Filter zu eng.</p>';
+            summaryEl2.textContent = '';
+            return;
+        }
+        if (active.length < allRoots.length) {
+            rootsParam = '&roots=' + encodeURIComponent(active.join('|'));
+        }
+    }
+
     const url = '/api/search?q=' + encodeURIComponent(term)
               + (uniqueOnly ? '&uniqueOnly=1' : '')
+              + (filterState.year && filterState.year !== 'all' ? '&year=' + encodeURIComponent(filterState.year) : '')
+              + (filterState.sort && filterState.sort !== 'relevance' ? '&sort=' + encodeURIComponent(filterState.sort) : '')
+              + (filterState.filename ? '&filename=' + encodeURIComponent(filterState.filename) : '')
+              + rootsParam
               + `&offset=${searchState.offset}&limit=${searchState.limit}`;
 
     try {
@@ -458,6 +564,41 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('filter-unique-only').addEventListener('change', () => {
         runSearch(searchInput.value.trim());
     });
+
+    // Jahres-Filter (Pill-Buttons)
+    document.querySelectorAll('.year-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.year-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            filterState.year = btn.dataset.year;
+            triggerSearch();
+        });
+    });
+
+    // Sortierung (Dropdown)
+    const sortSelect = document.getElementById('sort-select');
+    if (sortSelect) {
+        sortSelect.addEventListener('change', () => {
+            filterState.sort = sortSelect.value;
+            triggerSearch();
+        });
+    }
+
+    // Dateinamen-Filter (mit Debounce, separat vom Such-Debounce)
+    const filenameInput = document.getElementById('filter-filename');
+    let filenameTimer = null;
+    if (filenameInput) {
+        filenameInput.addEventListener('input', () => {
+            clearTimeout(filenameTimer);
+            filenameTimer = setTimeout(() => {
+                filterState.filename = filenameInput.value.trim();
+                triggerSearch();
+            }, 250);
+        });
+    }
+
+    // Hauptpfade laden + Pills rendern
+    loadAndRenderRoots();
 
     // Reset-Button
     const resetBtn = document.getElementById('btn-reset');
