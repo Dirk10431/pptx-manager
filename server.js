@@ -57,40 +57,71 @@ function detectScanRoots(db) {
     const paths = db.prepare('SELECT file_path FROM presentations').all().map(r => r.file_path);
     if (paths.length === 0) return [];
 
-    // Pfad in Segmente zerlegen (Backslash UND Slash unterstuetzen)
     const splitSegs = (p) => p.split(/[\\/]+/).filter(Boolean);
-
-    // Praefix bis zur Tiefe d (1-basiert, Drive zaehlt als Segment 1)
-    const prefixAt = (segs, d) => segs.slice(0, d).join('\\');
-
     const allSegs = paths.map(splitSegs);
 
-    // Tiefe finden, bei der genug Aufteilung entsteht (mind. 4 Praefixe)
-    // oder bei der Tiefen-Untersuchung (max 8) stoppen.
+    // Step 1: Tiefe finden, bei der mind. 4 unterschiedliche Praefixe
+    // entstehen (oder bei 8 als Fallback abbrechen).
+    const prefixAt = (segs, d) => segs.slice(0, d).map(s => s.toLowerCase()).join('\\');
     let bestDepth = 4;
     for (let d = 1; d <= 8; d++) {
-        const set = new Set(allSegs.map(s => prefixAt(s, d).toLowerCase()));
+        const set = new Set(allSegs.map(s => prefixAt(s, d)));
         if (set.size >= 4) { bestDepth = d; break; }
-        if (d === 8) bestDepth = d; // Fallback bei sehr homogenen Pfaden
+        if (d === 8) bestDepth = d;
     }
 
-    // Gruppieren
+    // Step 2: Gruppieren nach Praefix auf bestDepth.
+    // Wir merken uns auch die original-case-Segmente (lowercase ist nur Key).
     const groups = new Map();
     for (const segs of allSegs) {
-        const fullPrefix = prefixAt(segs, bestDepth);
-        const key = fullPrefix.toLowerCase();
+        const key = prefixAt(segs, bestDepth);
         if (!groups.has(key)) {
-            groups.set(key, { fullPath: fullPrefix, count: 0 });
+            groups.set(key, {
+                originalPrefixSegs: segs.slice(0, bestDepth),
+                fileSegsList: [],
+            });
         }
-        groups.get(key).count++;
+        groups.get(key).fileSegsList.push(segs);
     }
 
-    // Label = letztes Segment (kompakt) oder voller Praefix als Fallback
+    // Step 3: Pro Gruppe Single-Child-Kette weiter abwaerts laufen.
+    // Solange ALLE Dateien der Gruppe denselben Unterordner haben (und keine
+    // Datei direkt in dem Verzeichnis liegt), tiefer steigen — der echte
+    // "Hauptpfad" ist dort, wo der Inhalt sich erstmals verzweigt.
+    function descendSingleChildChain(group) {
+        let pathSegs = [...group.originalPrefixSegs];
+        let depth = pathSegs.length;
+        const files = group.fileSegsList;
+
+        while (true) {
+            const distinctSegs = new Map(); // lowerKey -> original-case
+            let cantDescend = false;
+            for (const segs of files) {
+                // segs enthaelt am Ende den Dateinamen — segs.length-1 ist Filename-Index.
+                // Damit segs[depth] noch ein Verzeichnis ist, muss length > depth+1 gelten.
+                if (segs.length <= depth + 1) {
+                    cantDescend = true;
+                    break;
+                }
+                const segCase = segs[depth];
+                distinctSegs.set(segCase.toLowerCase(), segCase);
+            }
+            if (cantDescend) break;
+            if (distinctSegs.size !== 1) break; // Verzweigung -> Hier stoppt der Pfad
+            const [, original] = distinctSegs.entries().next().value;
+            pathSegs.push(original);
+            depth++;
+        }
+
+        return pathSegs;
+    }
+
     return Array.from(groups.values())
         .map(g => {
-            const segs = splitSegs(g.fullPath);
-            const label = segs.length > 0 ? segs[segs.length - 1] : g.fullPath;
-            return { label, fullPath: g.fullPath, count: g.count };
+            const pathSegs = descendSingleChildChain(g);
+            const fullPath = pathSegs.join('\\');
+            const label = pathSegs[pathSegs.length - 1] || fullPath;
+            return { label, fullPath, count: g.fileSegsList.length };
         })
         .sort((a, b) => b.count - a.count);
 }
