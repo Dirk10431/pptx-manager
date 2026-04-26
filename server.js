@@ -123,7 +123,8 @@ function detectScanRoots(db) {
             const label = pathSegs[pathSegs.length - 1] || fullPath;
             return { label, fullPath, count: g.fileSegsList.length };
         })
-        .sort((a, b) => b.count - a.count);
+        // Alphabetisch nach Label, deutsch (Umlaute richtig einsortiert)
+        .sort((a, b) => a.label.localeCompare(b.label, 'de', { sensitivity: 'base' }));
 }
 
 app.get('/api/scan-roots', (req, res) => {
