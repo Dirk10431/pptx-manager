@@ -424,3 +424,30 @@ mark {
     background: var(--ci-primary-bg);
     border-color: var(--ci-primary-light);
 }
+
+/* === Aktions-Buttons (Ordner / Datei oeffnen) === */
+.btn-action {
+    display: inline-block;
+    padding: 0.15rem 0.45rem;
+    margin-left: 0.25rem;
+    font-size: 0.95rem;
+    line-height: 1;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: white;
+    cursor: pointer;
+    transition: background 0.1s, border-color 0.1s;
+    vertical-align: middle;
+}
+.btn-action:hover {
+    background: var(--ci-primary-bg);
+    border-color: var(--ci-primary-light);
+}
+.btn-action:active {
+    background: var(--ci-primary-light);
+    color: white;
+}
+.action-buttons {
+    display: inline-block;
+    margin-left: 0.5rem;
+}

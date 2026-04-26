@@ -437,14 +437,52 @@ async function runSearch(term, append = false) {
             wrap.addEventListener('click', () => {
                 const slideId = wrap.dataset.slideId;
                 const img = wrap.querySelector('img');
-                // Wenn das Bild fehlerhaft / nicht geladen ist, nichts tun
                 if (!img || img.style.display === 'none') return;
                 const caption = wrap.dataset.caption || '';
                 openLightbox(`/api/thumb/${slideId}`, caption);
             });
         });
+
+        // Klick auf Aktions-Buttons (Ordner / Datei oeffnen)
+        resultsEl.querySelectorAll('.btn-action').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const path = btn.dataset.path;
+                const mode = btn.dataset.action; // 'folder' | 'file'
+                openFileOrFolder(path, mode);
+            });
+        });
     } catch (err) {
         resultsEl.innerHTML = `<p style="color: var(--danger);">Netzwerkfehler: ${escapeHtml(err.message)}</p>`;
+    }
+}
+
+// --- Aktions-Buttons: Datei oeffnen / im Explorer zeigen ---
+function actionButtonsHtml(filePath) {
+    const enc = escapeHtml(filePath);
+    return `
+        <span class="action-buttons" style="white-space: nowrap;">
+            <button type="button" class="btn-action" data-action="folder" data-path="${enc}"
+                    title="Im Explorer anzeigen">📂</button>
+            <button type="button" class="btn-action" data-action="file" data-path="${enc}"
+                    title="In PowerPoint oeffnen">▶</button>
+        </span>
+    `;
+}
+
+async function openFileOrFolder(filePath, mode) {
+    try {
+        const r = await fetch('/api/open', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filePath, mode }),
+        });
+        if (!r.ok) {
+            const err = await r.json();
+            alert('Fehler: ' + (err.error || 'Unbekannt'));
+        }
+    } catch (e) {
+        alert('Netzwerkfehler: ' + e.message);
     }
 }
 
@@ -490,7 +528,10 @@ function renderGroup(g, idx) {
         <tr>
             <td style="width: 130px;">${thumbnailHtml(o.slideId, { width: 120, caption: `Folie ${o.slideIndex} — ${o.fileName}` })}</td>
             <td style="vertical-align: top;"><span class="badge">Folie ${o.slideIndex}</span></td>
-            <td style="font-size: 0.85rem; vertical-align: top;" title="${escapeHtml(o.filePath)}">${escapeHtml(o.fileName)}</td>
+            <td style="font-size: 0.85rem; vertical-align: top;" title="${escapeHtml(o.filePath)}">
+                ${escapeHtml(o.fileName)}
+                <div style="margin-top: 0.25rem;">${actionButtonsHtml(o.filePath)}</div>
+            </td>
         </tr>
     `).join('');
 
@@ -511,6 +552,7 @@ function renderGroup(g, idx) {
                 <div style="font-size: 0.9rem; color: var(--text-light); margin-top: 0.25rem;">${rep.snippet || ''}</div>
                 <div style="font-size: 0.8rem; color: var(--text-light); margin-top: 0.35rem;" title="${escapeHtml(rep.filePath)}">
                     Beispiel aus: ${escapeHtml(rep.fileName)}
+                    ${actionButtonsHtml(rep.filePath)}
                 </div>
             </div>
             ${!isUnique ? `

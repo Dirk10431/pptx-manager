@@ -48,6 +48,56 @@ if (!compat.compatible) {
 }
 
 // --- API: Status/Statistik ---
+// --- API: Datei oeffnen oder im Explorer zeigen ---
+// Sicherheit: filePath MUSS in der DB stehen, sonst koennten beliebige
+// Dateien per HTTP-Request geoeffnet werden. Gilt nur lokal (127.0.0.1)
+// und nur unter Windows.
+app.post('/api/open', (req, res) => {
+    if (process.platform !== 'win32') {
+        return res.status(501).json({ error: 'Datei oeffnen nur unter Windows verfuegbar.' });
+    }
+
+    const { filePath, mode } = req.body || {};
+    if (!filePath || !mode) {
+        return res.status(400).json({ error: 'filePath und mode (file|folder) erforderlich.' });
+    }
+
+    // Validierung: Pfad muss in presentations stehen
+    const known = db.prepare('SELECT 1 FROM presentations WHERE file_path = ?').get(filePath);
+    if (!known) {
+        return res.status(404).json({ error: 'Pfad nicht in der Datenbank.' });
+    }
+    if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ error: 'Datei nicht mehr auf der Platte gefunden.' });
+    }
+
+    try {
+        let child;
+        if (mode === 'file') {
+            // In Standard-Anwendung oeffnen (PowerPoint o.ae.)
+            // cmd /c start "" "<datei>" -- start braucht einen leeren Titel als 1. Arg
+            child = spawn('cmd', ['/c', 'start', '""', filePath], {
+                detached: true,
+                stdio: 'ignore',
+                windowsHide: true,
+            });
+        } else if (mode === 'folder') {
+            // Explorer mit Datei vorausgewaehlt — beste UX (man sieht Datei + Kontext)
+            child = spawn('explorer.exe', ['/select,' + filePath], {
+                detached: true,
+                stdio: 'ignore',
+            });
+        } else {
+            return res.status(400).json({ error: 'Ungueltiger mode (file|folder).' });
+        }
+        child.unref();
+        res.json({ ok: true, mode });
+    } catch (err) {
+        console.error('[OPEN] Fehler:', err.message);
+        res.status(500).json({ error: 'Oeffnen fehlgeschlagen: ' + err.message });
+    }
+});
+
 // --- API: Hauptpfade automatisch erkennen ---
 // Gruppiert alle file_path-Eintraege auf der Tiefe, bei der sich
 // erstmals genug unterschiedliche Praefixe ergeben (>=4). Liefert
