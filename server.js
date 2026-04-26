@@ -82,27 +82,16 @@ app.post('/api/open', (req, res) => {
                 windowsHide: true,
             });
         } else if (mode === 'folder') {
-            // explorer.exe /select,"<pfad>" ist beim Quoting heikel — sowohl
-            // direkter Spawn als auch shell:true scheitert je nach Pfad.
-            // Verlaesslich: PowerShell Start-Process -ArgumentList nutzt die
-            // korrekte Win32-API zur Argument-Uebergabe.
-            const psPath = filePath.replace(/'/g, "''");
-            const psScript = `
-$ErrorActionPreference = 'Stop'
-$path = '${psPath}'
-Start-Process -FilePath 'explorer.exe' -ArgumentList "/select,\`"$path\`""
-`;
-            const scriptFile = writeTempPs1(psScript);
-            child = spawn('powershell.exe', [
-                '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
-                '-File', scriptFile,
-            ], {
+            // explorer.exe /select,"<pfad>" hat sich auf diesem System nicht
+            // verlaesslich aufrufen lassen (Quoting / Single-Instance-Verhalten).
+            // Pragmatisch: Wir oeffnen einfach den uebergeordneten Ordner.
+            // Direkt-Spawn ohne Shell, ohne PowerShell — explorer.exe akzeptiert
+            // einen einzelnen Pfad als Argument zuverlaessig.
+            const folder = path.dirname(filePath);
+            child = spawn('explorer.exe', [folder], {
                 detached: true,
                 stdio: 'ignore',
-                windowsHide: true,
             });
-            // Skript-Datei nach ein paar Sekunden aufraeumen (PS hat sie dann gelesen)
-            setTimeout(() => safeUnlink(scriptFile), 5000);
         } else {
             return res.status(400).json({ error: 'Ungueltiger mode (file|folder).' });
         }
