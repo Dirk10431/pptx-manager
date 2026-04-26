@@ -231,10 +231,24 @@ app.get('/api/config', (req, res) => {
 app.get('/api/stats', (req, res) => {
     const presentationCount = db.prepare('SELECT COUNT(*) AS c FROM presentations').get().c;
     const slideCount = db.prepare('SELECT COUNT(*) AS c FROM slides').get().c;
+    const uniqueSlides = db.prepare('SELECT COUNT(DISTINCT text_hash) AS c FROM slides').get().c;
+    const thumbnailsDone = db.prepare('SELECT COUNT(*) AS c FROM thumbnails').get().c;
+
+    const duplicateSlides = Math.max(0, slideCount - uniqueSlides);
+    const thumbnailsMissing = Math.max(0, uniqueSlides - thumbnailsDone);
+    const duplicateFactor = uniqueSlides > 0 ? slideCount / uniqueSlides : 0;
+    const thumbnailCoverage = uniqueSlides > 0 ? thumbnailsDone / uniqueSlides : 0;
+
     const c = checkFingerprintCompatibility(db, FINGERPRINT_VERSION);
     res.json({
         presentations: presentationCount,
         slides: slideCount,
+        uniqueSlides,
+        duplicateSlides,
+        thumbnailsDone,
+        thumbnailsMissing,
+        thumbnailCoverage,         // 0..1
+        duplicateFactor,           // 1.0 = keine Duplikate, 8.1 = im Schnitt 8x kopiert
         dbPath: dbPath,
         fingerprintVersion: FINGERPRINT_VERSION,
         storedFingerprintVersion: c.storedVersion,

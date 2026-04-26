@@ -392,6 +392,79 @@ input[type="checkbox"], input[type="radio"] {
     font-weight: 700;
 }
 
+/* === Dashboard (Status-Karte mit Tacho + Detail-Stats) === */
+.dashboard {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    flex-wrap: wrap;
+    margin-bottom: 18px;
+    padding-bottom: 18px;
+    border-bottom: 1px solid var(--border);
+}
+
+/* Tacho: SVG-Donut mit Prozentwert in der Mitte */
+.tacho {
+    position: relative;
+    flex-shrink: 0;
+    width: 130px;
+    height: 130px;
+}
+.tacho svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+.tacho-bg {
+    fill: none;
+    stroke: rgba(255,255,255,0.12);
+    stroke-width: 12;
+}
+.tacho-fg {
+    fill: none;
+    stroke: var(--accent2);
+    stroke-width: 12;
+    stroke-linecap: round;
+    transform: rotate(-90deg);
+    transform-origin: 60px 60px;
+    transition: stroke-dashoffset 0.8s cubic-bezier(0.16,1,0.3,1);
+}
+.tacho-center {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    pointer-events: none;
+}
+.tacho-pct {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--ink);
+    line-height: 1;
+}
+.tacho-pct-suffix {
+    font-size: 14px;
+    color: var(--muted);
+    font-weight: 600;
+}
+
+.tacho-info { flex: 1; min-width: 200px; }
+.tacho-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--ink);
+    margin-bottom: 4px;
+}
+.tacho-subtitle {
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.5;
+}
+.tacho-subtitle strong { color: var(--accent2); }
+
 /* === Status-Banner === */
 .warn-box {
     background: rgba(255,179,179,0.12);

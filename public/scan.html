@@ -37,13 +37,36 @@
         <span class="link-card-arrow">⌕</span>
     </a>
 
-    <!-- Status -->
+    <!-- Status: Dashboard -->
     <section class="card">
         <div class="section-label">Status</div>
+
+        <div class="dashboard">
+            <div class="tacho">
+                <svg viewBox="0 0 120 120" aria-hidden="true">
+                    <circle class="tacho-bg" cx="60" cy="60" r="50"></circle>
+                    <circle class="tacho-fg" id="tacho-ring" cx="60" cy="60" r="50"
+                            stroke-dasharray="0 999" stroke-dashoffset="0"></circle>
+                </svg>
+                <div class="tacho-center">
+                    <span class="tacho-pct"><span id="tacho-pct-val">–</span><span class="tacho-pct-suffix"> %</span></span>
+                </div>
+            </div>
+            <div class="tacho-info">
+                <div class="tacho-title">Thumbnails fertig</div>
+                <div class="tacho-subtitle"><strong id="tacho-done">–</strong> von <strong id="tacho-total">–</strong> eindeutigen Folien gerendert. <span id="tacho-missing-note"></span></div>
+            </div>
+        </div>
+
         <div class="meta-grid">
             <div class="meta-item">Präsentationen <strong id="stat-presentations">-</strong></div>
-            <div class="meta-item">Folien <strong id="stat-slides">-</strong></div>
+            <div class="meta-item">Folien gesamt <strong id="stat-slides">-</strong></div>
+            <div class="meta-item">Eindeutige Inhalte <strong id="stat-unique">-</strong></div>
+            <div class="meta-item">Duplikate <strong id="stat-duplicates">-</strong></div>
+            <div class="meta-item">Duplikat-Faktor <strong id="stat-dup-factor">-</strong></div>
+            <div class="meta-item">Thumbnails fehlend <strong id="stat-thumb-missing">-</strong></div>
         </div>
+
         <div id="version-warning" class="warn-box" style="display:none; margin-top:14px;">
             <strong>Achtung:</strong> Der Scan-Index wurde mit einer älteren Version der Fingerprint-Logik erstellt. Duplikat-Erkennung ist bis zu einem Neu-Scan unzuverlässig.
             <div style="margin-top:10px;">

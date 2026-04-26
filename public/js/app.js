@@ -53,13 +53,63 @@ document.addEventListener('DOMContentLoaded', () => {
     lb.querySelector('.lightbox-close').addEventListener('click', closeLightbox);
 });
 
-// --- Statistik laden ---
+// --- Statistik laden + Dashboard-Tacho rendern ---
+// Helfer: Zahl mit Tausender-Trennzeichen (deutsch).
+function fmtNum(n) {
+    if (n === null || n === undefined || !Number.isFinite(n)) return '–';
+    return n.toLocaleString('de-DE');
+}
+function fmtPct(p) {
+    if (p === null || p === undefined || !Number.isFinite(p)) return '–';
+    return (p * 100).toFixed(1).replace('.', ',');
+}
+
+// Tacho-Donut: Fortschritts-Ring per stroke-dasharray animieren.
+// Perimeter eines Kreises mit r=50 ist 2*PI*50 ≈ 314.16.
+function setTachoCoverage(coverage) {
+    const ring = document.getElementById('tacho-ring');
+    if (!ring) return;
+    const perimeter = 2 * Math.PI * 50;
+    const filled = Math.max(0, Math.min(1, coverage)) * perimeter;
+    ring.setAttribute('stroke-dasharray', `${filled} ${perimeter}`);
+}
+
+function setText(id, value) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = value;
+}
+
 async function loadStats() {
     try {
         const response = await fetch('/api/stats');
         const data = await response.json();
-        document.getElementById('stat-presentations').textContent = data.presentations;
-        document.getElementById('stat-slides').textContent = data.slides;
+
+        // Detail-Stats (Meta-Grid)
+        setText('stat-presentations', fmtNum(data.presentations));
+        setText('stat-slides',        fmtNum(data.slides));
+        setText('stat-unique',        fmtNum(data.uniqueSlides));
+        setText('stat-duplicates',    fmtNum(data.duplicateSlides));
+        setText('stat-dup-factor',    Number.isFinite(data.duplicateFactor) && data.duplicateFactor > 0
+            ? data.duplicateFactor.toFixed(1).replace('.', ',') + '×'
+            : '–');
+        setText('stat-thumb-missing', fmtNum(data.thumbnailsMissing));
+
+        // Tacho (Thumbnail-Coverage)
+        setTachoCoverage(data.thumbnailCoverage || 0);
+        setText('tacho-pct-val',  fmtPct(data.thumbnailCoverage));
+        setText('tacho-done',     fmtNum(data.thumbnailsDone));
+        setText('tacho-total',    fmtNum(data.uniqueSlides));
+
+        const note = document.getElementById('tacho-missing-note');
+        if (note) {
+            if (data.thumbnailsMissing > 0) {
+                note.innerHTML = `<strong>${fmtNum(data.thumbnailsMissing)}</strong> fehlen — auf der Scan-Seite findest du den Befehl, um sie zu rendern.`;
+            } else if (data.uniqueSlides > 0) {
+                note.textContent = 'Alle Vorschauen sind aktuell.';
+            } else {
+                note.textContent = 'Noch nichts indiziert. Auf der Scan-Seite einen Ordner hinzufügen.';
+            }
+        }
 
         // Versionshinweis ggf. anzeigen
         const warning = document.getElementById('version-warning');
