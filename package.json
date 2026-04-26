@@ -8,14 +8,17 @@
     "dev": "node server.js",
     "thumbs": "node bin/generate-thumbs.js",
     "thumbs:dry": "node bin/generate-thumbs.js --dry-run",
-    "thumbs:help": "node bin/generate-thumbs.js --help"
+    "thumbs:help": "node bin/generate-thumbs.js --help",
+    "analyze-pdfs": "node bin/analyze-pdfs.js",
+    "analyze-pdfs:help": "node bin/analyze-pdfs.js --help"
   },
   "author": "Dr.-Ing. Dirk Peters",
   "license": "UNLICENSED",
   "private": true,
   "dependencies": {
     "express": "^4.21.2",
+    "fast-xml-parser": "^4.5.1",
     "jszip": "^3.10.1",
-    "fast-xml-parser": "^4.5.1"
+    "pdf-parse": "^1.1.1"
   }
 }
