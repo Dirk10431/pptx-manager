@@ -26,3 +26,8 @@ _old/
 
 # Backups
 backups/
+
+# Vom Shortcut-Generator erzeugte Helfer-Batches — enthalten lokal hardcoded
+# Pfade und sind pro Installation neu zu erzeugen (make-shortcuts.bat).
+pptx-thumbs.bat
+pptx-open.bat

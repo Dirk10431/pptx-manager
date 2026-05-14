@@ -10,7 +10,8 @@
     "thumbs:dry": "node bin/generate-thumbs.js --dry-run",
     "thumbs:help": "node bin/generate-thumbs.js --help",
     "analyze-pdfs": "node bin/analyze-pdfs.js",
-    "analyze-pdfs:help": "node bin/analyze-pdfs.js --help"
+    "analyze-pdfs:help": "node bin/analyze-pdfs.js --help",
+    "shortcuts": "node bin/generate-shortcuts.js"
   },
   "author": "Dr.-Ing. Dirk Peters",
   "license": "UNLICENSED",

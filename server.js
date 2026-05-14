@@ -9,7 +9,19 @@ const express = require('express');
 const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
-const { initDb, checkFingerprintCompatibility, setFingerprintVersion, clearScanData } = require('./lib/db');
+const {
+    initDb,
+    checkFingerprintCompatibility,
+    setFingerprintVersion,
+    clearScanData,
+    listScanRoots,
+    getScanRoot,
+    updateScanRootLabel,
+    deleteScanRoot,
+    listPresentationsInRoot,
+    deletePresentationsByIds,
+    garbageCollectThumbnails,
+} = require('./lib/db');
 const { runScan, scanState, findPptxFiles } = require('./lib/scanner');
 const { FINGERPRINT_VERSION } = require('./lib/fingerprint');
 const { generateThumbnail, thumbnailCachePath, writeTempPs1, safeUnlink } = require('./lib/thumbnailer');
@@ -116,87 +128,156 @@ app.post('/api/open', (req, res) => {
     }
 });
 
-// --- API: Hauptpfade automatisch erkennen ---
-// Gruppiert alle file_path-Eintraege auf der Tiefe, bei der sich
-// erstmals genug unterschiedliche Praefixe ergeben (>=4). Liefert
-// pro Pfad ein Kurzlabel (letztes Segment), den vollen Praefix und
-// die Anzahl der Praesentationen.
-function detectScanRoots(db) {
-    const paths = db.prepare('SELECT file_path FROM presentations').all().map(r => r.file_path);
-    if (paths.length === 0) return [];
-
-    const splitSegs = (p) => p.split(/[\\/]+/).filter(Boolean);
-    const allSegs = paths.map(splitSegs);
-
-    // Step 1: Tiefe finden, bei der mind. 4 unterschiedliche Praefixe
-    // entstehen (oder bei 8 als Fallback abbrechen).
-    const prefixAt = (segs, d) => segs.slice(0, d).map(s => s.toLowerCase()).join('\\');
-    let bestDepth = 4;
-    for (let d = 1; d <= 8; d++) {
-        const set = new Set(allSegs.map(s => prefixAt(s, d)));
-        if (set.size >= 4) { bestDepth = d; break; }
-        if (d === 8) bestDepth = d;
-    }
-
-    // Step 2: Gruppieren nach Praefix auf bestDepth.
-    // Wir merken uns auch die original-case-Segmente (lowercase ist nur Key).
-    const groups = new Map();
-    for (const segs of allSegs) {
-        const key = prefixAt(segs, bestDepth);
-        if (!groups.has(key)) {
-            groups.set(key, {
-                originalPrefixSegs: segs.slice(0, bestDepth),
-                fileSegsList: [],
-            });
-        }
-        groups.get(key).fileSegsList.push(segs);
-    }
-
-    // Step 3: Pro Gruppe Single-Child-Kette weiter abwaerts laufen.
-    // Solange ALLE Dateien der Gruppe denselben Unterordner haben (und keine
-    // Datei direkt in dem Verzeichnis liegt), tiefer steigen — der echte
-    // "Hauptpfad" ist dort, wo der Inhalt sich erstmals verzweigt.
-    function descendSingleChildChain(group) {
-        let pathSegs = [...group.originalPrefixSegs];
-        let depth = pathSegs.length;
-        const files = group.fileSegsList;
-
-        while (true) {
-            const distinctSegs = new Map(); // lowerKey -> original-case
-            let cantDescend = false;
-            for (const segs of files) {
-                // segs enthaelt am Ende den Dateinamen — segs.length-1 ist Filename-Index.
-                // Damit segs[depth] noch ein Verzeichnis ist, muss length > depth+1 gelten.
-                if (segs.length <= depth + 1) {
-                    cantDescend = true;
-                    break;
-                }
-                const segCase = segs[depth];
-                distinctSegs.set(segCase.toLowerCase(), segCase);
-            }
-            if (cantDescend) break;
-            if (distinctSegs.size !== 1) break; // Verzweigung -> Hier stoppt der Pfad
-            const [, original] = distinctSegs.entries().next().value;
-            pathSegs.push(original);
-            depth++;
-        }
-
-        return pathSegs;
-    }
-
-    return Array.from(groups.values())
-        .map(g => {
-            const pathSegs = descendSingleChildChain(g);
-            const fullPath = pathSegs.join('\\');
-            const label = pathSegs[pathSegs.length - 1] || fullPath;
-            return { label, fullPath, count: g.fileSegsList.length };
-        })
-        // Alphabetisch nach Label, deutsch (Umlaute richtig einsortiert)
-        .sort((a, b) => a.label.localeCompare(b.label, 'de', { sensitivity: 'base' }));
-}
-
+// --- API: Hauptpfade aus scan_roots-Tabelle ---
+// Frueher per Heuristik aus file_path geraten — jetzt persistierte Roots,
+// vom Nutzer beim Scan explizit gewaehlt und per Label benennbar.
 app.get('/api/scan-roots', (req, res) => {
-    res.json({ roots: detectScanRoots(db) });
+    const rows = listScanRoots(db);
+    const roots = rows.map(r => ({
+        id: r.id,
+        fullPath: r.rootPath,
+        label: r.label,
+        count: r.presentationCount,
+        slideCount: r.slideCount,
+        lastScannedAt: r.lastScannedAt,
+        createdAt: r.createdAt,
+    })).sort((a, b) => a.label.localeCompare(b.label, 'de', { sensitivity: 'base' }));
+    res.json({ roots });
+});
+
+// Label eines Roots aendern
+app.patch('/api/scan-roots/:id', (req, res) => {
+    const id = parseInt(req.params.id, 10);
+    const { label } = req.body || {};
+    if (!Number.isInteger(id) || id <= 0) {
+        return res.status(400).json({ error: 'Ungueltige id.' });
+    }
+    if (!label || typeof label !== 'string' || !label.trim()) {
+        return res.status(400).json({ error: 'label erforderlich (nicht leer).' });
+    }
+    const changed = updateScanRootLabel(db, id, label.trim());
+    if (!changed) return res.status(404).json({ error: 'Root nicht gefunden.' });
+    res.json({ ok: true });
+});
+
+// Kompletten Root inkl. aller Praesentationen / Folien loeschen.
+// Thumbnails ohne zugehoerige Folie werden danach mit-eingesammelt.
+app.delete('/api/scan-roots/:id', (req, res) => {
+    if (scanState.running) {
+        return res.status(409).json({ error: 'Scan laeuft gerade, bitte warten.' });
+    }
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(id) || id <= 0) {
+        return res.status(400).json({ error: 'Ungueltige id.' });
+    }
+    const root = getScanRoot(db, id);
+    if (!root) return res.status(404).json({ error: 'Root nicht gefunden.' });
+
+    const before = listPresentationsInRoot(db, id).length;
+    deleteScanRoot(db, id);
+    const orphans = garbageCollectThumbnails(db);
+    let thumbsDeleted = 0;
+    for (const o of orphans) {
+        try { fs.unlinkSync(o.pngPath); thumbsDeleted++; } catch (e) { /* schon weg */ }
+    }
+    console.log(`[ROOT-DELETE] "${root.label}" (${root.rootPath}): ${before} Praesentationen, ${thumbsDeleted}/${orphans.length} Thumbnails`);
+    res.json({ ok: true, deletedPresentations: before, deletedThumbnails: thumbsDeleted });
+});
+
+// Einen einzelnen Root rescannen (gleicher Pfad, gleiches Label aus der DB)
+app.post('/api/scan-roots/:id/rescan', (req, res) => {
+    if (scanState.running) {
+        return res.status(409).json({ error: 'Ein Scan laeuft bereits.' });
+    }
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(id) || id <= 0) {
+        return res.status(400).json({ error: 'Ungueltige id.' });
+    }
+    const root = getScanRoot(db, id);
+    if (!root) return res.status(404).json({ error: 'Root nicht gefunden.' });
+    if (!fs.existsSync(root.rootPath)) {
+        return res.status(400).json({ error: 'Pfad existiert nicht mehr auf der Platte.' });
+    }
+    runScan(db, root.rootPath, root.label).catch(err => {
+        console.error('[RESCAN] Unerwarteter Fehler:', err);
+    });
+    res.json({ ok: true, message: `Rescan von "${root.label}" gestartet.` });
+});
+
+// Alle Roots nacheinander rescannen
+let rescanAllPending = null;
+app.post('/api/scan-roots/rescan-all', (req, res) => {
+    if (scanState.running || rescanAllPending) {
+        return res.status(409).json({ error: 'Es laeuft bereits ein Scan / Massen-Rescan.' });
+    }
+    const roots = listScanRoots(db);
+    if (roots.length === 0) {
+        return res.json({ ok: true, message: 'Keine Roots vorhanden.' });
+    }
+    rescanAllPending = (async () => {
+        for (const r of roots) {
+            if (!fs.existsSync(r.rootPath)) {
+                console.warn(`[RESCAN-ALL] uebersprungen (Pfad weg): ${r.rootPath}`);
+                continue;
+            }
+            try {
+                await runScan(db, r.rootPath, r.label);
+            } catch (err) {
+                console.error(`[RESCAN-ALL] Fehler bei ${r.rootPath}:`, err.message);
+            }
+        }
+    })().finally(() => { rescanAllPending = null; });
+    res.json({ ok: true, message: `Rescan von ${roots.length} Roots gestartet.`, count: roots.length });
+});
+
+// Stale-Files in einem Root: in der DB unter dem Root, aber nicht mehr
+// auf der Platte vorhanden. Live-Check via fs.existsSync.
+app.get('/api/scan-roots/:id/stale', (req, res) => {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(id) || id <= 0) {
+        return res.status(400).json({ error: 'Ungueltige id.' });
+    }
+    const root = getScanRoot(db, id);
+    if (!root) return res.status(404).json({ error: 'Root nicht gefunden.' });
+    const presentations = listPresentationsInRoot(db, id);
+    const stale = presentations.filter(p => !fs.existsSync(p.filePath));
+    res.json({ stale });
+});
+
+// Stale-Files in einem Root loeschen (mit explizit uebergebenen ids).
+// IDs werden gegen den Root validiert — Sicherung gegen Cross-Root-Delete.
+app.post('/api/scan-roots/:id/cleanup-stale', (req, res) => {
+    if (scanState.running) {
+        return res.status(409).json({ error: 'Scan laeuft, bitte warten.' });
+    }
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(id) || id <= 0) {
+        return res.status(400).json({ error: 'Ungueltige id.' });
+    }
+    const root = getScanRoot(db, id);
+    if (!root) return res.status(404).json({ error: 'Root nicht gefunden.' });
+
+    const { ids } = req.body || {};
+    if (!Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ error: 'ids[] erforderlich.' });
+    }
+    const numericIds = ids.map(n => parseInt(n, 10)).filter(n => Number.isInteger(n) && n > 0);
+    if (numericIds.length === 0) return res.json({ ok: true, deletedPresentations: 0, deletedThumbnails: 0 });
+
+    // Sicherheits-Check: nur ids loeschen, die wirklich unter diesem Root liegen.
+    const placeholders = numericIds.map(() => '?').join(',');
+    const owned = db.prepare(
+        `SELECT id FROM presentations WHERE scan_root_id = ? AND id IN (${placeholders})`
+    ).all(id, ...numericIds).map(r => r.id);
+
+    const deleted = deletePresentationsByIds(db, owned);
+    const orphans = garbageCollectThumbnails(db);
+    let thumbsDeleted = 0;
+    for (const o of orphans) {
+        try { fs.unlinkSync(o.pngPath); thumbsDeleted++; } catch (e) { /* schon weg */ }
+    }
+    console.log(`[CLEANUP-STALE] root="${root.label}": ${deleted} Praesentationen, ${thumbsDeleted}/${orphans.length} Thumbnails geloescht`);
+    res.json({ ok: true, deletedPresentations: deleted, deletedThumbnails: thumbsDeleted });
 });
 
 // --- API: Projekt-Info (Pfad, Versionsnummer) fuer UI-Hinweise ---
@@ -429,8 +510,9 @@ $form.Dispose()
 });
 
 // --- API: Scan starten ---
+// label optional — wenn weggelassen, nimmt der Scanner den letzten Ordnernamen.
 app.post('/api/scan', async (req, res) => {
-    const { folderPath } = req.body;
+    const { folderPath, label } = req.body;
     if (!folderPath) {
         return res.status(400).json({ error: 'Kein Pfad angegeben.' });
     }
@@ -438,7 +520,7 @@ app.post('/api/scan', async (req, res) => {
         return res.status(409).json({ error: 'Ein Scan laeuft bereits.' });
     }
     // Scan asynchron starten, Response sofort zurueck
-    runScan(db, folderPath).catch(err => {
+    runScan(db, folderPath, label).catch(err => {
         console.error('[SCAN] Unerwarteter Fehler:', err);
     });
     res.json({ ok: true, message: 'Scan gestartet.' });

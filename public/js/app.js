@@ -154,10 +154,24 @@ async function loadStats() {
 }
 
 // --- Index komplett zuruecksetzen ---
+// Nutzt das Modal-Confirm, falls verfuegbar (Scan-Seite hat es); fallback auf
+// natives confirm() auf Seiten ohne Modal. Nach erfolgreichem Reset wird die
+// Seite neu geladen, damit keine alten Listen / Filter-States haengenbleiben.
 async function resetIndex() {
-    if (!confirm('Alle gescannten Folien-Daten wirklich loeschen? Die PPTX-Dateien bleiben unberuehrt. Danach muss neu gescannt werden.')) {
-        return;
+    const useModal = typeof showConfirm === 'function' && document.getElementById('confirm-modal');
+    let ok;
+    if (useModal) {
+        ok = await showConfirm({
+            title: 'Index komplett zurücksetzen',
+            body: 'Alle gescannten Folien-Daten, Hauptpfade und Thumbnails werden gelöscht. Die PPTX-Dateien auf der Platte bleiben unberührt.<br><br><span style="color: var(--muted); font-size: 0.85rem;">Hinweis: Die Seite wird nach dem Reset automatisch neu geladen.</span>',
+            okText: 'Endgültig zurücksetzen',
+            danger: true,
+        });
+    } else {
+        ok = window.confirm('Alle gescannten Folien-Daten wirklich loeschen? Die PPTX-Dateien bleiben unberuehrt.\n\nDie Seite wird nach dem Reset automatisch neu geladen.');
     }
+    if (!ok) return;
+
     try {
         const response = await fetch('/api/reset', { method: 'POST' });
         if (!response.ok) {
@@ -165,9 +179,8 @@ async function resetIndex() {
             alert('Fehler: ' + (err.error || 'Unbekannter Fehler'));
             return;
         }
-        loadStats();
-        document.getElementById('search-results').innerHTML = '';
-        document.getElementById('search-summary').textContent = '';
+        // Sauberer Re-Init via Full-Reload statt manuellem DOM-Aufraeumen
+        window.location.reload();
     } catch (err) {
         alert('Netzwerkfehler: ' + err.message);
     }
@@ -181,6 +194,21 @@ function saveLastPath(path) {
 }
 function loadLastPath() {
     try { return localStorage.getItem(PATH_KEY) || ''; } catch (e) { return ''; }
+}
+
+// --- Letztes Path-Segment aus einem Pfad extrahieren (Default-Label) ---
+function basenameOfPath(p) {
+    if (!p) return '';
+    return p.replace(/[\\/]+$/, '').split(/[\\/]+/).pop() || p;
+}
+
+// Label-Feld auto-fuellen, solange der Nutzer es nicht selbst geaendert hat.
+// Ein einmal manuell befuelltes Feld lassen wir in Ruhe.
+function autoFillLabel(folderPath) {
+    const labelInput = document.getElementById('scan-label');
+    if (!labelInput) return;
+    if (labelInput.dataset.userEdited === '1') return;
+    labelInput.value = basenameOfPath(folderPath);
 }
 
 // --- Ordner ueber nativen Windows-Dialog waehlen ---
@@ -199,6 +227,7 @@ async function pickFolder() {
         }
         if (data.path) {
             input.value = data.path;
+            autoFillLabel(data.path);
             saveLastPath(data.path);
             checkPath();
         }
@@ -264,6 +293,8 @@ let pollInterval = null;
 async function startScan() {
     const folderPath = document.getElementById('folder-path').value.trim();
     if (!folderPath) return;
+    const labelInput = document.getElementById('scan-label');
+    const label = labelInput ? labelInput.value.trim() : '';
 
     document.getElementById('btn-scan').disabled = true;
     document.getElementById('btn-check').disabled = true;
@@ -273,7 +304,7 @@ async function startScan() {
         const response = await fetch('/api/scan', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ folderPath }),
+            body: JSON.stringify({ folderPath, label }),
         });
         if (!response.ok) {
             const err = await response.json();
@@ -307,11 +338,20 @@ async function updateProgress() {
         if (!state.running && state.finishedAt) {
             clearInterval(pollInterval);
             pollInterval = null;
-            document.querySelector('#progress-card h2').textContent = 'Scan abgeschlossen';
-            document.getElementById('btn-scan').disabled = false;
-            document.getElementById('btn-check').disabled = false;
+            const progHdr = document.querySelector('#progress-card h2, #progress-card .section-label');
+            if (progHdr) progHdr.textContent = 'Scan abgeschlossen';
+            const btnScan = document.getElementById('btn-scan');
+            const btnCheck = document.getElementById('btn-check');
+            if (btnScan)  btnScan.disabled = false;
+            if (btnCheck) btnCheck.disabled = false;
             document.getElementById('progress-current').textContent = '-';
             loadStats();
+            // Index-Verwaltung neu rendern (Counts, last-scanned-at)
+            loadAndRenderManageRoots();
+            // Wenn der Scanner stale files erkannt hat: Bestaetigungs-Modal zeigen.
+            if (state.scanRootId && Array.isArray(state.staleFiles) && state.staleFiles.length > 0) {
+                showStaleModal(state.scanRootId, state.label || '', state.staleFiles);
+            }
         }
     } catch (err) {
         console.error('Polling-Fehler:', err);
@@ -656,12 +696,10 @@ function renderGroup(g, idx) {
     </div>`;
 }
 
-// --- Bash-Hinweise auf der Scan-Seite ---
-// Sobald ein Pfad erfolgreich validiert wurde, zeigen wir ein Code-Block
-// mit den Befehlen, die der Nutzer in einem zweiten Bash-Fenster ausfuehren
-// soll, um nach dem Scan die Thumbnails zu generieren.
-async function renderBashHints() {
-    const box = document.getElementById('bash-hints');
+// --- Thumb-Befehl rendern (permanenter Block zwischen Scan und Fortschritt) ---
+// Holt den projectRoot vom Server und baut einen kopierbaren Code-Schnipsel.
+async function renderThumbsCmd() {
+    const box = document.getElementById('thumbs-cmd-box');
     if (!box) return;
     let projectRoot = '<projekt-pfad>';
     try {
@@ -671,18 +709,16 @@ async function renderBashHints() {
             projectRoot = d.projectRoot || projectRoot;
         }
     } catch {}
-    const code = `cd "${projectRoot}"\nnpm run thumbs`;
-    box.innerHTML = `
-        <div class="prompt-box">
-            <span class="prompt-label">▸ Nach dem Scan: Thumbnails generieren</span>
-            <button type="button" class="copy-btn" data-copy-target="bash-cmd">📋 Kopieren</button>
-            <span class="prompt-content" id="bash-cmd">${escapeHtml(code)}</span>
-        </div>
-        <p style="font-size:12px; color:var(--muted); margin-top:8px;">
-            Oeffne ein zweites Git-Bash-Fenster, fuege die zwei Zeilen ein und druecke Enter. Der CLI-Lauf braucht je nach Datenmenge zwischen 10 Minuten und 2 Stunden — abbrechbar mit <strong>Strg+C</strong>, beim naechsten Start macht er an der Stelle weiter.
-        </p>
-    `;
-    box.style.display = 'block';
+    // Git-Bash erwartet POSIX-Slashes; Win-Pfad mit Backslashes funktioniert
+    // dort auch, aber Forward-Slashes sind freundlicher.
+    const codeOneLine = `cd "${projectRoot.replace(/\\/g, '/')}" && npm run thumbs`;
+    // Kompakte Variante: einzeilig, deshalb HTML auch ohne Einrueckung
+    // schreiben (sonst expandiert white-space:pre-wrap die Leerzeichen).
+    box.innerHTML =
+        `<div class="prompt-box prompt-box-compact">` +
+            `<button type="button" class="copy-btn" data-copy-target="thumbs-cmd-text">📋 Kopieren</button>` +
+            `<code class="prompt-content" id="thumbs-cmd-text">${escapeHtml(codeOneLine)}</code>` +
+        `</div>`;
     // Copy-Button verdrahten
     const cbtn = box.querySelector('.copy-btn');
     if (cbtn) {
@@ -702,17 +738,273 @@ async function renderBashHints() {
     }
 }
 
-// Bei jedem erfolgreichen Pfad-Check Bash-Hinweise (re-)rendern.
-// Wird in checkPath() unten getriggert via Hook.
+// Pfad-Check-Hook: nach erfolgreichem Check Label auto-fuellen.
 const __originalCheckPath = checkPath;
 checkPath = async function patchedCheckPath() {
     await __originalCheckPath();
-    // Wenn der Scan-Button nicht mehr disabled ist, war der Check erfolgreich
     const scanBtn = document.getElementById('btn-scan');
     if (scanBtn && !scanBtn.disabled) {
-        renderBashHints();
+        const folderPath = document.getElementById('folder-path').value.trim();
+        autoFillLabel(folderPath);
     }
 };
+
+// =============================================================
+// Index-Verwaltung (scan-roots)
+// =============================================================
+
+// Generisches Bestaetigungs-Modal. Promise resolved zu true/false.
+function showConfirm({ title = 'Bestätigen', body = 'Wirklich?', okText = 'OK', cancelText = 'Abbrechen', danger = false } = {}) {
+    return new Promise((resolve) => {
+        const modal = document.getElementById('confirm-modal');
+        if (!modal) { resolve(window.confirm(body)); return; }
+        document.getElementById('confirm-modal-title').textContent = title;
+        document.getElementById('confirm-modal-body').innerHTML = body;
+        const okBtn = document.getElementById('confirm-ok');
+        const cancelBtn = document.getElementById('confirm-cancel');
+        okBtn.textContent = okText;
+        cancelBtn.textContent = cancelText;
+        okBtn.classList.toggle('danger', !!danger);
+
+        const close = (result) => {
+            modal.style.display = 'none';
+            okBtn.removeEventListener('click', onOk);
+            cancelBtn.removeEventListener('click', onCancel);
+            modal.querySelector('.modal-backdrop').removeEventListener('click', onCancel);
+            modal.querySelector('.modal-close').removeEventListener('click', onCancel);
+            resolve(result);
+        };
+        const onOk     = () => close(true);
+        const onCancel = () => close(false);
+        okBtn.addEventListener('click', onOk);
+        cancelBtn.addEventListener('click', onCancel);
+        modal.querySelector('.modal-backdrop').addEventListener('click', onCancel);
+        modal.querySelector('.modal-close').addEventListener('click', onCancel);
+        modal.style.display = 'flex';
+    });
+}
+
+// Stale-Files-Modal nach Scan oder per Rescan-Button.
+function showStaleModal(scanRootId, rootLabel, staleFiles) {
+    const modal = document.getElementById('stale-modal');
+    if (!modal) return;
+    document.getElementById('stale-modal-title').textContent =
+        `${staleFiles.length} Datei(en) nicht mehr gefunden — "${rootLabel}"`;
+    const ul = document.getElementById('stale-modal-list');
+    ul.innerHTML = staleFiles.map(f =>
+        `<li><strong>${escapeHtml(f.fileName)}</strong><br><span style="color:var(--muted);">${escapeHtml(f.filePath)}</span></li>`
+    ).join('');
+
+    const confirmBtn = document.getElementById('stale-confirm');
+    const cancelBtn  = document.getElementById('stale-cancel');
+    const closeBtn   = modal.querySelector('.modal-close');
+    const backdrop   = modal.querySelector('.modal-backdrop');
+
+    const close = () => {
+        modal.style.display = 'none';
+        confirmBtn.removeEventListener('click', onConfirm);
+        cancelBtn.removeEventListener('click', close);
+        closeBtn.removeEventListener('click', close);
+        backdrop.removeEventListener('click', close);
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = 'Aus DB entfernen';
+    };
+    const onConfirm = async () => {
+        confirmBtn.disabled = true;
+        confirmBtn.textContent = 'Lösche...';
+        try {
+            const ids = staleFiles.map(f => f.id);
+            const r = await fetch(`/api/scan-roots/${scanRootId}/cleanup-stale`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ids }),
+            });
+            const data = await r.json();
+            if (!r.ok) {
+                alert('Fehler: ' + (data.error || 'unbekannt'));
+            }
+            loadStats();
+            loadAndRenderManageRoots();
+        } catch (err) {
+            alert('Netzwerkfehler: ' + err.message);
+        } finally {
+            close();
+        }
+    };
+
+    confirmBtn.addEventListener('click', onConfirm);
+    cancelBtn.addEventListener('click', close);
+    closeBtn.addEventListener('click', close);
+    backdrop.addEventListener('click', close);
+    modal.style.display = 'flex';
+}
+
+// Datum formatieren (Mio.-ms Timestamp -> "vor X Tagen" oder Datum)
+function fmtTimestamp(ms) {
+    if (!ms) return '–';
+    const diff = Date.now() - ms;
+    const days = Math.floor(diff / (1000*60*60*24));
+    if (days < 1) return 'heute';
+    if (days < 2) return 'gestern';
+    if (days < 14) return `vor ${days} Tagen`;
+    return new Date(ms).toLocaleDateString('de-DE');
+}
+
+// Liste aller scan_roots laden + rendern (Index-Verwaltung-Sektion).
+async function loadAndRenderManageRoots() {
+    const card = document.getElementById('roots-card');
+    if (!card) return;
+    const list = document.getElementById('roots-list');
+    const empty = document.getElementById('roots-empty');
+    const btnRescanAll = document.getElementById('btn-rescan-all');
+
+    try {
+        const r = await fetch('/api/scan-roots');
+        const data = await r.json();
+        const roots = data.roots || [];
+
+        if (roots.length === 0) {
+            if (empty) empty.style.display = 'block';
+            if (list)  list.innerHTML = '';
+            if (btnRescanAll) btnRescanAll.style.display = 'none';
+            return;
+        }
+        if (empty) empty.style.display = 'none';
+        if (btnRescanAll) btnRescanAll.style.display = '';
+
+        list.innerHTML = roots.map(rt => `
+            <div class="root-row" data-root-id="${rt.id}">
+                <div class="root-row-main">
+                    <div class="root-row-label-line">
+                        <span class="root-row-label" contenteditable="true"
+                              spellcheck="false"
+                              data-original="${escapeHtml(rt.label)}"
+                              title="Klicken zum Bearbeiten — Enter speichert">${escapeHtml(rt.label)}</span>
+                        <span class="root-row-counts">${fmtNum(rt.count)} Präsentationen · ${fmtNum(rt.slideCount)} Folien · Letzter Scan: ${fmtTimestamp(rt.lastScannedAt)}</span>
+                    </div>
+                    <div class="root-row-path" title="${escapeHtml(rt.fullPath)}">${escapeHtml(rt.fullPath)}</div>
+                </div>
+                <div class="root-row-actions">
+                    <button class="root-action-btn root-rescan" type="button" title="Diesen Pfad neu scannen (erkennt verschwundene Dateien)">↻ Aktualisieren</button>
+                    <button class="root-action-btn danger root-delete" type="button" title="Pfad mit allen Folien aus der Datenbank entfernen">✕ Löschen</button>
+                </div>
+            </div>
+        `).join('');
+
+        // Label-Edit: Enter speichert, Esc verwirft, blur speichert.
+        list.querySelectorAll('.root-row-label').forEach(el => {
+            el.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') { e.preventDefault(); el.blur(); }
+                if (e.key === 'Escape') { e.preventDefault(); el.textContent = el.dataset.original; el.blur(); }
+            });
+            el.addEventListener('blur', async () => {
+                const newLabel = el.textContent.trim();
+                if (!newLabel || newLabel === el.dataset.original) {
+                    el.textContent = el.dataset.original;
+                    return;
+                }
+                const id = el.closest('.root-row').dataset.rootId;
+                try {
+                    const r = await fetch(`/api/scan-roots/${id}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ label: newLabel }),
+                    });
+                    const data = await r.json();
+                    if (!r.ok) {
+                        alert('Fehler beim Umbenennen: ' + (data.error || 'unbekannt'));
+                        el.textContent = el.dataset.original;
+                        return;
+                    }
+                    el.dataset.original = newLabel;
+                } catch (err) {
+                    alert('Netzwerkfehler: ' + err.message);
+                    el.textContent = el.dataset.original;
+                }
+            });
+        });
+
+        // Rescan-Button pro Root
+        list.querySelectorAll('.root-rescan').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const row = btn.closest('.root-row');
+                const id = row.dataset.rootId;
+                row.classList.add('is-busy');
+                try {
+                    const r = await fetch(`/api/scan-roots/${id}/rescan`, { method: 'POST' });
+                    const data = await r.json();
+                    if (!r.ok) {
+                        alert('Fehler: ' + (data.error || 'unbekannt'));
+                        row.classList.remove('is-busy');
+                        return;
+                    }
+                    // Progress-Card aufmachen + Poller starten
+                    document.getElementById('progress-card').style.display = 'block';
+                    if (!pollInterval) pollInterval = setInterval(updateProgress, 500);
+                } catch (err) {
+                    alert('Netzwerkfehler: ' + err.message);
+                    row.classList.remove('is-busy');
+                }
+            });
+        });
+
+        // Delete-Button pro Root (mit Bestaetigung)
+        list.querySelectorAll('.root-delete').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const row = btn.closest('.root-row');
+                const id = row.dataset.rootId;
+                const label = row.querySelector('.root-row-label').textContent.trim();
+                const ok = await showConfirm({
+                    title: 'Hauptpfad löschen',
+                    body: `Den Hauptpfad <strong>${escapeHtml(label)}</strong> wirklich aus der Datenbank entfernen? Alle dazugehörigen Folien werden gelöscht. <br><br><span style="color:var(--muted); font-size: 0.85rem;">Die PPTX-Dateien auf der Platte bleiben unberührt.</span>`,
+                    okText: 'Endgültig löschen',
+                    danger: true,
+                });
+                if (!ok) return;
+                try {
+                    const r = await fetch(`/api/scan-roots/${id}`, { method: 'DELETE' });
+                    const data = await r.json();
+                    if (!r.ok) {
+                        alert('Fehler: ' + (data.error || 'unbekannt'));
+                        return;
+                    }
+                    loadStats();
+                    loadAndRenderManageRoots();
+                } catch (err) {
+                    alert('Netzwerkfehler: ' + err.message);
+                }
+            });
+        });
+
+        // "Alle aktualisieren"
+        const btnAll = document.getElementById('btn-rescan-all');
+        if (btnAll && !btnAll.dataset.bound) {
+            btnAll.dataset.bound = '1';
+            btnAll.addEventListener('click', async () => {
+                const ok = await showConfirm({
+                    title: 'Alle Hauptpfade aktualisieren',
+                    body: 'Alle ' + roots.length + ' Hauptpfade nacheinander neu scannen? Das kann je nach Datenmenge dauern.',
+                    okText: 'Los',
+                });
+                if (!ok) return;
+                try {
+                    const r = await fetch('/api/scan-roots/rescan-all', { method: 'POST' });
+                    const data = await r.json();
+                    if (!r.ok) {
+                        alert('Fehler: ' + (data.error || 'unbekannt'));
+                        return;
+                    }
+                    document.getElementById('progress-card').style.display = 'block';
+                    if (!pollInterval) pollInterval = setInterval(updateProgress, 500);
+                } catch (err) {
+                    alert('Netzwerkfehler: ' + err.message);
+                }
+            });
+        }
+    } catch (err) {
+        console.warn('Hauptpfad-Liste konnte nicht geladen werden:', err);
+    }
+}
 
 // --- Init ---
 document.addEventListener('DOMContentLoaded', () => {
@@ -736,6 +1028,24 @@ document.addEventListener('DOMContentLoaded', () => {
         if (btnPick)  btnPick.addEventListener('click', pickFolder);
         if (btnCheck) btnCheck.addEventListener('click', checkPath);
         if (btnScan)  btnScan.addEventListener('click', startScan);
+
+        // Label-Feld: sobald der Nutzer selbst tippt, kein Auto-Fuellen mehr.
+        const labelInput = document.getElementById('scan-label');
+        if (labelInput) {
+            labelInput.addEventListener('input', () => {
+                labelInput.dataset.userEdited = labelInput.value.trim() ? '1' : '';
+            });
+        }
+
+        // Thumb-Befehl-Block immer rendern (zwischen Scan und Fortschritt)
+        if (document.getElementById('thumbs-cmd-box')) {
+            renderThumbsCmd();
+        }
+
+        // Index-Verwaltung-Sektion (nur auf scan.html vorhanden)
+        if (document.getElementById('roots-card')) {
+            loadAndRenderManageRoots();
+        }
 
         // Falls bei Seitenaufruf bereits ein Pfad in der History steht und ein
         // Scan moeglich waere, koennte hier auto-validiert werden — wir machen
@@ -781,9 +1091,12 @@ document.addEventListener('DOMContentLoaded', () => {
         loadAndRenderRoots();
     }
 
-    // Reset-Button (kann auf beiden Seiten vorkommen)
+    // Reset-Button — sowohl im Warn-Block (btn-reset) als auch permanent
+    // in der Index-Verwaltung (btn-reset-all) verfuegbar.
     const resetBtn = document.getElementById('btn-reset');
     if (resetBtn) resetBtn.addEventListener('click', resetIndex);
+    const resetAllBtn = document.getElementById('btn-reset-all');
+    if (resetAllBtn) resetAllBtn.addEventListener('click', resetIndex);
 
     // Falls beim Aufruf der Scan-Seite bereits ein Scan laeuft → Polling starten
     if (document.getElementById('progress-card')) {

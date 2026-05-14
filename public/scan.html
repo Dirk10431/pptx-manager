@@ -78,7 +78,7 @@
     <!-- Scan -->
     <section class="card">
         <div class="section-label">Ordner scannen</div>
-        <p>Wähle einen Ordner mit PPTX-Dateien aus oder gib den Pfad ein. Unterordner werden automatisch mitgescannt.</p>
+        <p>Wähle einen Ordner mit PPTX-Dateien aus oder gib den Pfad ein. Unterordner werden automatisch mitgescannt. Der zuletzt gewählte Ordnername wird als Label übernommen und bildet einen <em>Hauptpfad</em>, den du später auf der Suchseite filtern kannst.</p>
 
         <div class="form-group">
             <div class="opt-label">Ordner-Pfad</div>
@@ -88,15 +88,27 @@
             </div>
         </div>
 
+        <div class="form-group" style="margin-top:10px;">
+            <div class="opt-label">Anzeige-Label (optional, sonst Ordnername)</div>
+            <input type="text" id="scan-label" placeholder="(wird beim Pfad-Check automatisch befüllt)" autocomplete="off" style="width:100%;">
+        </div>
+
         <div class="action-row" style="margin-top:14px;">
             <button class="act-btn" id="btn-check">Pfad prüfen</button>
             <button class="go-btn" id="btn-scan" disabled style="flex:1;">Scan starten</button>
         </div>
 
         <div id="check-result" style="margin-top:14px;"></div>
+    </section>
 
-        <!-- Bash-Hinweise — werden via JS nach erfolgreichem Pfad-Check gefuellt -->
-        <div id="bash-hints" style="display:none; margin-top:18px;"></div>
+    <!-- Thumbnails: Hinweis-Block mit Befehl (immer sichtbar) -->
+    <section class="card" id="thumbs-info-card">
+        <div class="section-label">Thumbnails generieren / aktualisieren</div>
+        <p>Nach jedem Scan werden Inhalt &amp; Volltext indiziert. <strong>Folien-Vorschaubilder</strong> entstehen separat — die folgende Befehlszeile in einem zweiten Git-Bash-Fenster ausführen:</p>
+        <div id="thumbs-cmd-box"></div>
+        <p style="font-size:12px; color:var(--muted); margin-top:10px;">
+            Der Lauf rendert nur fehlende Thumbnails (inkrementell — schon vorhandene werden übersprungen). Abbrechbar mit <strong>Strg+C</strong>; beim nächsten Start geht es an der Stelle weiter. Dauer hängt von Foliendaten ab (siehe Tacho oben).
+        </p>
     </section>
 
     <!-- Scan-Fortschritt -->
@@ -113,7 +125,56 @@
         </div>
     </section>
 
+    <!-- Index-Verwaltung: alle gespeicherten Hauptpfade -->
+    <section class="card" id="roots-card">
+        <div class="section-label">Index-Verwaltung — gespeicherte Hauptpfade</div>
+        <p id="roots-empty" style="color: var(--muted);">Noch keine Hauptpfade. Scanne oben einen Ordner, dann erscheint er hier.</p>
+        <div id="roots-list" class="roots-list"></div>
+        <div class="action-row" style="margin-top:14px; gap:10px;">
+            <button class="act-btn" id="btn-rescan-all" style="display:none;">Alle Pfade aktualisieren</button>
+            <button class="act-btn root-action-btn danger" id="btn-reset-all" style="margin-left:auto;" title="Komplette Datenbank leeren — alle Folien-Daten, Hauptpfade und Thumbnails verwerfen. PPTX-Dateien auf der Platte bleiben unberührt.">Index komplett zurücksetzen</button>
+        </div>
+    </section>
+
 </main>
+
+<!-- Modal: Stale-Files bestätigen -->
+<div id="stale-modal" class="modal" style="display:none;">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content">
+        <div class="modal-header">
+            <strong id="stale-modal-title">Nicht mehr gefundene Dateien</strong>
+            <button type="button" class="modal-close" aria-label="Schließen">×</button>
+        </div>
+        <div class="modal-body">
+            <p id="stale-modal-intro">Folgende Dateien stehen in der Datenbank, sind aber nicht mehr auf der Platte. Aus der Datenbank entfernen?</p>
+            <p style="font-size: 0.85rem; color: var(--muted);">Hinweis: Bei OneDrive-Pfaden kann das auch passieren, wenn die Synchronisation pausiert oder die Datei nur „online verfügbar“ ist. Im Zweifel zuerst Sync prüfen.</p>
+            <ul id="stale-modal-list" class="stale-list"></ul>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="act-btn" id="stale-cancel">Abbrechen</button>
+            <button type="button" class="go-btn" id="stale-confirm">Aus DB entfernen</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Generische Bestätigung (Root löschen etc.) -->
+<div id="confirm-modal" class="modal" style="display:none;">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content modal-small">
+        <div class="modal-header">
+            <strong id="confirm-modal-title">Bestätigen</strong>
+            <button type="button" class="modal-close" aria-label="Schließen">×</button>
+        </div>
+        <div class="modal-body">
+            <p id="confirm-modal-body">Wirklich?</p>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="act-btn" id="confirm-cancel">Abbrechen</button>
+            <button type="button" class="go-btn" id="confirm-ok">OK</button>
+        </div>
+    </div>
+</div>
 
 <footer>
     <div class="footer-left">
