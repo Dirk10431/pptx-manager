@@ -33,13 +33,19 @@ brew install node
 
 > **Node 22 oder neuer** ist Pflicht — das Tool nutzt das in Node 22+ eingebaute `node:sqlite`-Modul. Aeltere Node-Versionen starten den Server nicht.
 
-### Microsoft PowerPoint (fuer Thumbnails)
+### LibreOffice oder PowerPoint (fuer Thumbnails)
 
-Die Folien-Vorschaubilder werden vom Mac per AppleScript an Microsoft PowerPoint geschickt. Damit das funktioniert, muss **PowerPoint fuer Mac installiert** sein (egal ob Microsoft 365 oder Standalone).
+Fuer die Folien-Vorschaubilder ist auf dem Mac **LibreOffice empfohlen** (kostenlos, lauft headless durch, keine Berechtigungs-Dialoge):
 
-Ohne PowerPoint laufen Scan, Volltextsuche und Duplikat-Anzeige normal — nur die Vorschau-Bilder fehlen.
+```bash
+brew install --cask libreoffice
+```
 
-Zusaetzlich genutzt: `sips` (zum Skalieren der PNGs auf 480×270). Das ist macOS-Bordmittel, nichts zu installieren.
+Alternativ funktioniert auch **Microsoft PowerPoint fuer Mac** — allerdings laeuft PowerPoint auf macOS im App-Sandbox, was bedeutet: pro PPTX-Datei und pro Temp-Ordner kommt ein "Datei-Zugriff erteilen"-Dialog hoch. Bei mehreren hundert Dateien wird das untragbar. Deshalb nimmt das Tool **automatisch LibreOffice**, wenn `soffice` installiert ist, und nur als Fallback PowerPoint.
+
+Ohne eines der beiden laufen Scan, Volltextsuche und Duplikat-Anzeige normal — nur die Vorschau-Bilder fehlen.
+
+Zusaetzlich genutzt: `sips` (Skaliert die PNGs auf 480×270) und `osascript -l JavaScript` mit PDFKit (PDF→PNG-Konvertierung). Beides ist macOS-Bordmittel, nichts zu installieren.
 
 ---
 
@@ -179,9 +185,12 @@ Node-Version zu alt. `node --version` muss `v22.x` oder hoeher zeigen. Mit Homeb
 Beim ersten Klick fragt macOS, ob das Terminal/Node "System Events" steuern darf. **Erlauben** → ab dann funktioniert der Dialog. Spaeter erreichbar unter *Systemeinstellungen → Datenschutz & Sicherheit → Automation*.
 
 ### Thumbnails werden nicht erzeugt
-- PowerPoint installiert? `ls /Applications | grep -i powerpoint` muss `Microsoft PowerPoint.app` zeigen.
-- Beim ersten Aufruf von `npm run thumbs` fragt macOS, ob Node Microsoft PowerPoint steuern darf. **Erlauben.**
+- LibreOffice ODER PowerPoint installiert? `which soffice` und `ls /Applications | grep -iE "libreoffice|powerpoint"` pruefen.
+- LibreOffice empfohlen via `brew install --cask libreoffice` (headless, keine Permission-Dialoge).
 - `sips`-Binary vorhanden? `which sips` muss einen Pfad liefern (auf jedem Mac vorinstalliert).
+
+### PowerPoint fragt staendig "Datei-Zugriff erteilen"
+Bekanntes Problem: PowerPoint Mac laeuft im App-Sandbox und fragt pro Datei und pro Temp-Ordner um Erlaubnis. Loesung: LibreOffice installieren (siehe oben) — das Tool nutzt es automatisch, sobald `soffice` im System ist, und PowerPoint wird nicht mehr angefasst.
 
 ### Browser oeffnet sich nicht automatisch
 Manuell oeffnen: **http://127.0.0.1:3002**

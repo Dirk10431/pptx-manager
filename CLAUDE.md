@@ -35,7 +35,7 @@ Lokale Web-App zur **Verwaltung und Duplikatsuche in PPTX-Sammlungen** (ca. 500 
 | Frontend | Vanilla HTML/CSS/JS |
 | Datenbank | SQLite via eingebautem `node:sqlite` mit FTS5-Volltextsuche |
 | PPTX-Parsing | `jszip` + `fast-xml-parser` |
-| Thumbnails | Microsoft PowerPoint (Windows: COM via PowerShell, macOS: AppleScript + `sips`) |
+| Thumbnails | Windows: PowerPoint-COM via PowerShell. macOS: LibreOffice headless (`soffice`) → PDF → PDFKit/JXA → `sips`; Fallback PowerPoint via AppleScript |
 | Hosting | Lokal, nur 127.0.0.1 (kein Netzwerk) |
 
 ## Dateistruktur
