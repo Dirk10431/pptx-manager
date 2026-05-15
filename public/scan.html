@@ -101,17 +101,8 @@
         <div id="check-result" style="margin-top:14px;"></div>
     </section>
 
-    <!-- Thumbnails: Hinweis-Block mit Befehl (immer sichtbar) -->
-    <section class="card" id="thumbs-info-card">
-        <div class="section-label">Thumbnails generieren / aktualisieren</div>
-        <p>Nach jedem Scan werden Inhalt &amp; Volltext indiziert. <strong>Folien-Vorschaubilder</strong> entstehen separat — die folgende Befehlszeile in einem zweiten Git-Bash-Fenster ausführen:</p>
-        <div id="thumbs-cmd-box"></div>
-        <p style="font-size:12px; color:var(--muted); margin-top:10px;">
-            Der Lauf rendert nur fehlende Thumbnails (inkrementell — schon vorhandene werden übersprungen). Abbrechbar mit <strong>Strg+C</strong>; beim nächsten Start geht es an der Stelle weiter. Dauer hängt von Foliendaten ab (siehe Tacho oben).
-        </p>
-    </section>
-
-    <!-- Scan-Fortschritt -->
+    <!-- Scan-Fortschritt — direkt unter Ordner-Scan, damit Balken sofort
+         sichtbar ist und der Thumbnail-Hinweis-Block nicht dazwischenliegt. -->
     <section class="card" id="progress-card" style="display:none;">
         <div class="section-label">Scan läuft …</div>
         <p><strong>Aktuelle Datei:</strong> <span id="progress-current">-</span></p>
@@ -123,6 +114,16 @@
             <div class="meta-item">Unverändert <strong id="progress-skipped">0</strong></div>
             <div class="meta-item">Fehler <strong id="progress-failed">0</strong></div>
         </div>
+    </section>
+
+    <!-- Thumbnails: Hinweis-Block mit Befehl (immer sichtbar) -->
+    <section class="card" id="thumbs-info-card">
+        <div class="section-label">Thumbnails generieren / aktualisieren</div>
+        <p>Nach jedem Scan werden Inhalt &amp; Volltext indiziert. <strong>Folien-Vorschaubilder</strong> entstehen separat — die folgende Befehlszeile in einem zweiten Git-Bash-Fenster ausführen:</p>
+        <div id="thumbs-cmd-box"></div>
+        <p style="font-size:12px; color:var(--muted); margin-top:10px;">
+            Der Lauf rendert nur fehlende Thumbnails (inkrementell — schon vorhandene werden übersprungen). Abbrechbar mit <strong>Strg+C</strong>; beim nächsten Start geht es an der Stelle weiter. Dauer hängt von Foliendaten ab (siehe Tacho oben).
+        </p>
     </section>
 
     <!-- Index-Verwaltung: alle gespeicherten Hauptpfade -->
