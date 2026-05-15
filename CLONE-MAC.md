@@ -31,7 +31,15 @@ Alternativ mit Homebrew:
 brew install node
 ```
 
-> Mindestens **Node 18+** wird empfohlen (`better-sqlite3` und `express 4.21+` brauchen aktuelle Versionen).
+> **Node 22 oder neuer** ist Pflicht — das Tool nutzt das in Node 22+ eingebaute `node:sqlite`-Modul. Aeltere Node-Versionen starten den Server nicht.
+
+### Microsoft PowerPoint (fuer Thumbnails)
+
+Die Folien-Vorschaubilder werden vom Mac per AppleScript an Microsoft PowerPoint geschickt. Damit das funktioniert, muss **PowerPoint fuer Mac installiert** sein (egal ob Microsoft 365 oder Standalone).
+
+Ohne PowerPoint laufen Scan, Volltextsuche und Duplikat-Anzeige normal — nur die Vorschau-Bilder fehlen.
+
+Zusaetzlich genutzt: `sips` (zum Skalieren der PNGs auf 480×270). Das ist macOS-Bordmittel, nichts zu installieren.
 
 ---
 
@@ -161,8 +169,19 @@ kill <PID>
 
 ### `npm install` schlaegt fehl
 - Internet-Verbindung pruefen
-- Node-Version checken: `node --version` (sollte 18+ sein)
+- Node-Version checken: `node --version` (muss 22 oder neuer sein)
 - Cache loeschen: `npm cache clean --force` und erneut `npm install`
+
+### Server startet, aber Fehler "node:sqlite is not defined"
+Node-Version zu alt. `node --version` muss `v22.x` oder hoeher zeigen. Mit Homebrew aktualisieren: `brew upgrade node` oder das LTS-Paket von [nodejs.org](https://nodejs.org/) installieren.
+
+### Ordner-Dialog ("Ordner waehlen") oeffnet sich nicht
+Beim ersten Klick fragt macOS, ob das Terminal/Node "System Events" steuern darf. **Erlauben** → ab dann funktioniert der Dialog. Spaeter erreichbar unter *Systemeinstellungen → Datenschutz & Sicherheit → Automation*.
+
+### Thumbnails werden nicht erzeugt
+- PowerPoint installiert? `ls /Applications | grep -i powerpoint` muss `Microsoft PowerPoint.app` zeigen.
+- Beim ersten Aufruf von `npm run thumbs` fragt macOS, ob Node Microsoft PowerPoint steuern darf. **Erlauben.**
+- `sips`-Binary vorhanden? `which sips` muss einen Pfad liefern (auf jedem Mac vorinstalliert).
 
 ### Browser oeffnet sich nicht automatisch
 Manuell oeffnen: **http://127.0.0.1:3002**

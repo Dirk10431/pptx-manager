@@ -31,10 +31,11 @@ Lokale Web-App zur **Verwaltung und Duplikatsuche in PPTX-Sammlungen** (ca. 500 
 
 | Komponente | Technologie |
 |---|---|
-| Backend | Node.js + Express |
+| Backend | Node.js 22+ mit Express |
 | Frontend | Vanilla HTML/CSS/JS |
-| Datenbank | SQLite (`better-sqlite3`) mit FTS5-Volltextsuche |
+| Datenbank | SQLite via eingebautem `node:sqlite` mit FTS5-Volltextsuche |
 | PPTX-Parsing | `jszip` + `fast-xml-parser` |
+| Thumbnails | Microsoft PowerPoint (Windows: COM via PowerShell, macOS: AppleScript + `sips`) |
 | Hosting | Lokal, nur 127.0.0.1 (kein Netzwerk) |
 
 ## Dateistruktur

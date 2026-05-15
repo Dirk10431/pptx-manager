@@ -60,18 +60,21 @@ if (!compat.compatible) {
 }
 
 // --- API: Status/Statistik ---
-// --- API: Datei oeffnen oder im Explorer zeigen ---
+// --- API: Datei oeffnen oder im Datei-Browser zeigen ---
 // Sicherheit: filePath MUSS in der DB stehen, sonst koennten beliebige
-// Dateien per HTTP-Request geoeffnet werden. Gilt nur lokal (127.0.0.1)
-// und nur unter Windows.
+// Dateien per HTTP-Request geoeffnet werden. Gilt nur lokal (127.0.0.1).
+// Unterstuetzt Windows (cmd/explorer) und macOS (open).
 app.post('/api/open', (req, res) => {
-    if (process.platform !== 'win32') {
-        return res.status(501).json({ error: 'Datei oeffnen nur unter Windows verfuegbar.' });
+    if (process.platform !== 'win32' && process.platform !== 'darwin') {
+        return res.status(501).json({ error: 'Datei oeffnen aktuell nur unter Windows und macOS verfuegbar.' });
     }
 
     const { filePath, mode } = req.body || {};
     if (!filePath || !mode) {
         return res.status(400).json({ error: 'filePath und mode (file|folder) erforderlich.' });
+    }
+    if (mode !== 'file' && mode !== 'folder') {
+        return res.status(400).json({ error: 'Ungueltiger mode (file|folder).' });
     }
 
     // Validierung: Pfad muss in presentations stehen
@@ -85,40 +88,54 @@ app.post('/api/open', (req, res) => {
 
     try {
         let child;
-        if (mode === 'file') {
-            // In Standard-Anwendung oeffnen (PowerPoint o.ae.)
-            // cmd /c start "" "<datei>" -- start braucht einen leeren Titel als 1. Arg
-            child = spawn('cmd', ['/c', 'start', '""', filePath], {
-                detached: true,
-                stdio: 'ignore',
-                windowsHide: true,
-            });
-        } else if (mode === 'folder') {
-            // Uebergeordneten Ordner oeffnen.
-            // Zwei Methoden:
-            //   A) cmd /c start "" <folder> — bringt Fenster in den Vordergrund,
-            //      scheitert aber bei Pfaden mit Klammern UND Kommas (cmd-Quoting)
-            //   B) spawn('explorer.exe', [folder]) — immer zuverlaessig, aber
-            //      Fenster oeffnet im Hintergrund (Taskleiste blinkt)
-            // Wir nehmen A, ausser der Pfad ist "auffaellig" (Klammern + Komma).
-            const folder = path.dirname(filePath);
-            const tricky = /[()]/.test(folder) && /,/.test(folder);
-            if (tricky) {
-                // Fallback: Direkt-Spawn (Hintergrund, dafuer zuverlaessig)
-                child = spawn('explorer.exe', [folder], {
-                    detached: true,
-                    stdio: 'ignore',
-                });
-            } else {
-                // Standard: cmd /c start mit Vordergrund-Fokus
-                child = spawn('cmd', ['/c', 'start', '""', folder], {
+        if (process.platform === 'win32') {
+            if (mode === 'file') {
+                // In Standard-Anwendung oeffnen (PowerPoint o.ae.)
+                // cmd /c start "" "<datei>" -- start braucht einen leeren Titel als 1. Arg
+                child = spawn('cmd', ['/c', 'start', '""', filePath], {
                     detached: true,
                     stdio: 'ignore',
                     windowsHide: true,
                 });
+            } else {
+                // Uebergeordneten Ordner oeffnen.
+                // Zwei Methoden:
+                //   A) cmd /c start "" <folder> — bringt Fenster in den Vordergrund,
+                //      scheitert aber bei Pfaden mit Klammern UND Kommas (cmd-Quoting)
+                //   B) spawn('explorer.exe', [folder]) — immer zuverlaessig, aber
+                //      Fenster oeffnet im Hintergrund (Taskleiste blinkt)
+                // Wir nehmen A, ausser der Pfad ist "auffaellig" (Klammern + Komma).
+                const folder = path.dirname(filePath);
+                const tricky = /[()]/.test(folder) && /,/.test(folder);
+                if (tricky) {
+                    child = spawn('explorer.exe', [folder], {
+                        detached: true,
+                        stdio: 'ignore',
+                    });
+                } else {
+                    child = spawn('cmd', ['/c', 'start', '""', folder], {
+                        detached: true,
+                        stdio: 'ignore',
+                        windowsHide: true,
+                    });
+                }
             }
         } else {
-            return res.status(400).json({ error: 'Ungueltiger mode (file|folder).' });
+            // macOS: open <datei> startet Standard-App (PowerPoint fuer .pptx).
+            //        open -R <datei> oeffnet Finder und markiert die Datei darin.
+            // -g vermeidet, dass Finder den Fokus klaut, falls Browser aktiv ist;
+            //    bei "file" lassen wir Fokus auf PowerPoint wandern (-g weglassen).
+            if (mode === 'file') {
+                child = spawn('open', [filePath], {
+                    detached: true,
+                    stdio: 'ignore',
+                });
+            } else {
+                child = spawn('open', ['-R', filePath], {
+                    detached: true,
+                    stdio: 'ignore',
+                });
+            }
         }
         child.unref();
         res.json({ ok: true, mode });
@@ -455,12 +472,50 @@ app.post('/api/check-path', (req, res) => {
     }
 });
 
-// --- API: Nativen Windows-Ordner-Dialog oeffnen ---
-// Spawnt PowerShell mit FolderBrowserDialog. Nur unter Windows nutzbar.
-// Dialog wird per Dummy-Form mit TopMost nach vorn gebracht.
+// --- API: Nativen Ordner-Dialog oeffnen (Windows + macOS) ---
+// Windows: PowerShell mit FolderBrowserDialog, per .ps1-Datei (Norton-vertraeglich).
+// macOS:   AppleScript "choose folder" via osascript, gibt POSIX-Pfad zurueck.
 app.get('/api/pick-folder', (req, res) => {
+    if (process.platform === 'darwin') {
+        // AppleScript "choose folder" bringt einen nativen Finder-Dialog hoch.
+        // Wir laufen unter "System Events" um den Dialog vor andere Apps zu legen.
+        const applescript = `
+try
+    tell application "System Events"
+        activate
+        set chosen to choose folder with prompt "Ordner mit PPTX-Dateien waehlen"
+    end tell
+    return POSIX path of chosen
+on error errMsg number errNum
+    -- -128 = User-Abbruch, leerer Output -> Cancel-Pfad
+    if errNum is -128 then
+        return ""
+    else
+        error errMsg number errNum
+    end if
+end try
+`;
+        const proc = spawn('osascript', ['-e', applescript]);
+        let stdout = '';
+        let stderr = '';
+        proc.stdout.on('data', (d) => { stdout += d.toString('utf8'); });
+        proc.stderr.on('data', (d) => { stderr += d.toString('utf8'); });
+        proc.on('error', (err) => {
+            res.status(500).json({ error: 'osascript fehlgeschlagen: ' + err.message });
+        });
+        proc.on('close', () => {
+            const selected = stdout.trim().replace(/\/$/, ''); // Trailing-Slash entfernen
+            if (selected) {
+                res.json({ path: selected });
+            } else {
+                res.json({ path: null, cancelled: true });
+            }
+        });
+        return;
+    }
+
     if (process.platform !== 'win32') {
-        return res.status(501).json({ error: 'Ordner-Dialog aktuell nur unter Windows verfuegbar.' });
+        return res.status(501).json({ error: 'Ordner-Dialog aktuell nur unter Windows und macOS verfuegbar.' });
     }
 
     // Norton-vertraeglich: Skript in .ps1-Datei schreiben und per -File aufrufen,

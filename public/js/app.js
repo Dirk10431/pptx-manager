@@ -211,7 +211,7 @@ function autoFillLabel(folderPath) {
     labelInput.value = basenameOfPath(folderPath);
 }
 
-// --- Ordner ueber nativen Windows-Dialog waehlen ---
+// --- Ordner ueber nativen Datei-Dialog waehlen (Windows: PowerShell, macOS: AppleScript) ---
 async function pickFolder() {
     const btn = document.getElementById('btn-pick-folder');
     const input = document.getElementById('folder-path');
@@ -579,13 +579,13 @@ async function runSearch(term, append = false) {
     }
 }
 
-// --- Aktions-Buttons: Datei oeffnen / im Explorer zeigen ---
+// --- Aktions-Buttons: Datei oeffnen / im Datei-Browser zeigen ---
 function actionButtonsHtml(filePath) {
     const enc = escapeHtml(filePath);
     return `
         <span class="action-buttons" style="white-space: nowrap;">
             <button type="button" class="btn-action" data-action="folder" data-path="${enc}"
-                    title="Im Explorer anzeigen">📂</button>
+                    title="Im Datei-Browser anzeigen">📂</button>
             <button type="button" class="btn-action" data-action="file" data-path="${enc}"
                     title="In PowerPoint oeffnen">▶</button>
         </span>
@@ -709,8 +709,9 @@ async function renderThumbsCmd() {
             projectRoot = d.projectRoot || projectRoot;
         }
     } catch {}
-    // Git-Bash erwartet POSIX-Slashes; Win-Pfad mit Backslashes funktioniert
-    // dort auch, aber Forward-Slashes sind freundlicher.
+    // Forward-Slashes funktionieren in Git-Bash (Windows) und zsh/bash (macOS)
+    // gleichermassen; auf Windows mit cmd waeren Backslashes noetig, aber dort
+    // empfehlen wir ohnehin Git-Bash.
     const codeOneLine = `cd "${projectRoot.replace(/\\/g, '/')}" && npm run thumbs`;
     // Kompakte Variante: einzeilig, deshalb HTML auch ohne Einrueckung
     // schreiben (sonst expandiert white-space:pre-wrap die Leerzeichen).
